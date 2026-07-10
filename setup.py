@@ -17,12 +17,13 @@ setup(
     ],
     packages=find_packages(),
     include_package_data=True,
+    package_data={"eefinder": ["data/*.tsv"]},
     install_requires=[
         "click==8.1.3",
     ],
     entry_points={
         "console_scripts": [
-            "eefinder = eefinder.scripts.main:main",
+            "eefinder = eefinder.scripts.main:cli",
         ],
     },
 )

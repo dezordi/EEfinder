@@ -1,6 +1,27 @@
 scripts/__pycache__/
+__pycache__/
 *.pyc
+output/
+
+# BLAST / DIAMOND database indexes
 *.pin
 *.phr
 *.psq
-output/
+*.pdb
+*.pjs
+*.pot
+*.ptf
+*.pto
+*.ndb
+*.nhr
+*.nin
+*.nsq
+*.dmnd
+*.fai
+
+# Python build / test artifacts
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+results_test/

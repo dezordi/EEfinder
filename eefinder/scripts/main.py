@@ -1,36 +1,94 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
+"""Command-line entrypoint orchestrating the EEfinder pipeline.
+
+Each pipeline step is a small class in :mod:`eefinder` that runs its work on
+instantiation and communicates with the next step through files on disk. This
+module wires those steps together in order and writes a typed run summary
+(:class:`~eefinder.utils.RunInfo`) to ``eefinder.log``.
+"""
 
 import time
 import click
 import re
 import os
 import glob
+import shutil
 import sys
 import json
-from eefinder.log import logger
+from dataclasses import asdict
+from eefinder.log import logger, enable_debug
 from eefinder.run_message import PaperInfo
-from eefinder.utils import check_outdir, step_info, running_info
+from eefinder.utils import check_outdir, StepInfo, RunArguments, RunInfo
 from eefinder.prepare_data import InsertPrefix
 from eefinder.clean_data import RemoveShortSequences, MaskClean
 from eefinder.make_database import MakeDB
 from eefinder.similarity_analysis import SimilaritySearch
 from eefinder.filter_table import FilterTable
 from eefinder.get_taxonomy import GetTaxonomy, GetFinalTaxonomy, GetCleanedTaxonomy
-from eefinder.bed import GetFasta, GetAnnotBed, RemoveAnnotation, MergeBed, BedFlank, GetBed
+from eefinder.bed import (
+    GetFasta,
+    GetAnnotBed,
+    RemoveAnnotation,
+    MergeBed,
+    BedFlank,
+    GetBed,
+)
 from eefinder.compare_results import CompareResults
 from eefinder.get_length import GetLength
 from eefinder.tag_elements import TagElements
+from eefinder.overlap import FilterOverlap
+from eefinder.get_databases import (
+    GetDatabases,
+    DATASETS_BINARY,
+    DEFAULT_TAXA,
+)
+from eefinder.gff import WriteGFF3
+from eefinder.versions import (
+    collect_dependency_versions,
+    collect_system_info,
+    find_env_yml,
+)
 from eefinder import __version__
+
+HOMEPAGE = "https://github.com/WallauBioinfo/EEfinder"
+
+
+def report_run_context(system, dependencies):
+    """Log the EEfinder version, host context and dependency versions.
+
+    Prokka-style startup banner. Emits a warning for any dependency whose
+    runtime version differs from the ``env.yml`` pin or that could not be found
+    on ``PATH``.
+    """
+    logger.info(f"This is EEfinder {__version__}")
+    logger.info(f"Homepage is {HOMEPAGE}")
+    logger.info(f"Operating system is {system.operating_system}")
+    logger.info(f"You are {system.user}")
+    for dep in dependencies:
+        if dep.status == "mismatch":
+            logger.warning(
+                f"{dep.name} {dep.detected} differs from the env.yml pin "
+                f"{dep.expected}"
+            )
+        elif dep.status == "not-found":
+            logger.warning(f"{dep.name} was not found on PATH")
+        else:
+            logger.info(f"Using {dep.name} {dep.detected}")
 
 
 @click.group()
+@click.version_option(__version__)
 def cli():
-    "This tool predict regions of Endogenous Elements in Eukaryote Genomes."
+    """EEfinder: find Endogenous Elements in eukaryote genomes.
+
+    Use ``screening`` to run the EE-finding pipeline and ``get-databases`` to
+    download the RefSeq protein databases it needs.
+    """
     pass
 
 
-@cli.command()
+@cli.command(name="screening")
 @click.version_option(__version__)
 @click.option(
     "-in",
@@ -147,11 +205,52 @@ def cli():
 @click.option(
     "-ml",
     "--merge_level",
-    help="Taxonomy level to merge elements by genus or family, default = genus",
-    default="genus",
+    help="Taxonomy level to merge elements by genus or family, default = family",
+    default="family",
     type=click.Choice(["family", "genus"]),
 )
-def main(
+@click.option(
+    "-an",
+    "--analysis",
+    help="Type of endogenous elements being screened; sets the GFF3 feature "
+    "type ('virus' -> endogenous_viral_element, 'bacteria' -> "
+    "endogenous_bacterial_element). default = virus",
+    default="virus",
+    type=click.Choice(["virus", "bacteria"]),
+)
+@click.option(
+    "-ov",
+    "--overlap",
+    help="What to do with elements tagged as overlaped: 'keep' (default, keep "
+    "all), 'longest' (keep the longest element of each overlap), or 'targets' "
+    "(keep only elements from --target_families). Filtered-out elements are "
+    "saved to tmp_outputs/. default = keep",
+    default="keep",
+    type=click.Choice(["keep", "longest", "targets"]),
+)
+@click.option(
+    "-tf",
+    "--target_families",
+    help="Family to KEEP when --overlap targets is used. Repeat for multiple "
+    "families (e.g. -tf Flaviviridae -tf Caulimoviridae). Mutually exclusive "
+    "with --non_target_families.",
+    multiple=True,
+)
+@click.option(
+    "-ntf",
+    "--non_target_families",
+    help="Family to DROP when --overlap targets is used. Repeat for multiple "
+    "families (e.g. -ntf Retroviridae -ntf Metaviridae). Mutually exclusive "
+    "with --target_families.",
+    multiple=True,
+)
+@click.option(
+    "--debug",
+    help="Emit verbose debug logging (intermediate file paths, per-step "
+    "details). default = off",
+    is_flag=True,
+)
+def screening(
     genome_file,
     outdir,
     database,
@@ -169,29 +268,65 @@ def main(
     index_databases,
     prefix,
     merge_level,
+    analysis,
+    overlap,
+    target_families,
+    non_target_families,
+    debug,
 ):
-    """
-    This tool predict regions of Endogenous Elements in Eukaryote Genomes.
-    """
-    steps_infos = []
+    """Run the EEfinder screening pipeline on a genome."""
+    if debug:
+        enable_debug()
+    steps_infos: "list[StepInfo]" = []
     start_running_time = time.time()
     print_info = PaperInfo()
     print_info.print_start(__version__)
+    logger.debug(
+        "screening arguments: "
+        f"genome_file={genome_file!r} outdir={outdir!r} database={database!r} "
+        f"dbmetadata={dbmetadata!r} baits={hostgenesbaits!r} mode={mode!r} "
+        f"length={length} flank={flank} limit={limit} "
+        f"range_junction={range_junction} mask_per={mask_per} "
+        f"clean_masked={clean_masked} threads={threads} "
+        f"index_databases={index_databases} prefix={prefix!r} "
+        f"merge_level={merge_level!r} analysis={analysis!r} overlap={overlap!r} "
+        f"target_families={list(target_families)} "
+        f"non_target_families={list(non_target_families)}"
+    )
+
+    system_info = collect_system_info()
+    try:
+        dependencies = collect_dependency_versions(find_env_yml())
+        report_run_context(system_info, dependencies)
+    except Exception as err:
+        logger.warning(f"Could not collect dependency versions: {err}")
+        dependencies = []
+
+    if overlap == "targets" and bool(target_families) == bool(non_target_families):
+        click.secho(
+            "--overlap targets requires exactly one of --target_families or "
+            "--non_target_families.",
+            err=True,
+            fg="red",
+        )
+        sys.exit(1)
 
     if prefix is None:
         try:
             logger.info(f"Creating prefix")
             prefix = genome_file
-            prefix = re.sub("\..*", "", prefix)
-            prefix = re.sub(".*/", "", prefix).rstrip("\n")
-            prefix = re.sub(".*/", "", prefix).rstrip("\n")
+            prefix = re.sub(r"\..*", "", prefix)
+            prefix = re.sub(r".*/", "", prefix).rstrip("\n")
+            prefix = re.sub(r".*/", "", prefix).rstrip("\n")
         except Exception as err:
             click.secho(f"Failed to create prefix: {err}", err=True, fg="red")
             sys.exit(1)
+    logger.debug(f"Using prefix {prefix!r}")
 
     try:
         logger.info(f"Creating output directory")
         outdir = check_outdir(outdir)
+        logger.debug(f"Output directory resolved to {outdir}")
 
     except Exception as err:
         click.secho(f"Failed to create output dir: {err}", err=True, fg="red")
@@ -201,12 +336,17 @@ def main(
         logger.info(f"Preparing input data")
         start_time = time.time()
 
+        logger.debug(f"InsertPrefix: {genome_file} -> {outdir}/{prefix}.rn")
         InsertPrefix(genome_file, prefix, outdir)
+        logger.debug(
+            f"RemoveShortSequences: dropping contigs < {length} nt from "
+            f"{outdir}/{prefix}.rn -> {outdir}/{prefix}.rn.fmt"
+        )
         RemoveShortSequences(f"{outdir}/{prefix}.rn", length)
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Prepare input data",
                 start_time=start_time,
                 end_time=end_time,
@@ -222,12 +362,14 @@ def main(
             logger.info(f"Indexing databases")
             start_time = time.time()
 
+            logger.debug(f"MakeDB ({mode}) protein DB: {database}")
             MakeDB(mode, database, "prot", threads)
+            logger.debug(f"MakeDB ({mode}) baits DB: {hostgenesbaits}")
             MakeDB(mode, hostgenesbaits, "prot", threads)
 
             end_time = time.time()
             steps_infos.append(
-                step_info(
+                StepInfo.from_times(
                     step="Index databases",
                     start_time=start_time,
                     end_time=end_time,
@@ -245,12 +387,18 @@ def main(
         start_time = time.time()
         query = f"{outdir}/{prefix}.rn.fmt"
 
+        logger.debug(
+            f"SimilaritySearch ({mode}): {query} vs {database} -> {query}.blastx"
+        )
         SimilaritySearch(query, database, threads, mode)
+        logger.debug(
+            f"FilterTable EE: {query}.blastx (range_junction={range_junction})"
+        )
         FilterTable(f"{query}.blastx", range_junction, "EE", outdir)
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Similarity search",
                 start_time=start_time,
                 end_time=end_time,
@@ -266,6 +414,9 @@ def main(
         logger.info("Extracting Putative EEs")
         start_time = time.time()
 
+        logger.debug(
+            f"GetFasta putative EEs from {outdir}/{prefix}.rn.fmt.blastx.filtred.bed"
+        )
         GetFasta(
             f"{outdir}/{prefix}.rn.fmt",
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed",
@@ -274,7 +425,7 @@ def main(
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Extraction of putative EEs",
                 start_time=start_time,
                 end_time=end_time,
@@ -290,13 +441,20 @@ def main(
 
         start_time = time.time()
         query = f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta"
+        logger.debug(
+            f"SimilaritySearch ({mode}) vs host baits: {query} vs {hostgenesbaits}"
+        )
         SimilaritySearch(query, hostgenesbaits, threads, mode)
+        logger.debug(
+            f"FilterTable HOST: {query}.blastx (range_junction={range_junction})"
+        )
         FilterTable(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx",
             range_junction,
             "HOST",
             outdir,
         )
+        logger.debug("CompareResults: dropping EEs that hit host baits harder")
         CompareResults(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred",
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred",
@@ -304,7 +462,7 @@ def main(
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Filter step",
                 start_time=start_time,
                 end_time=end_time,
@@ -321,6 +479,7 @@ def main(
         logger.info("Getting basic taxonomy info")
         start_time = time.time()
 
+        logger.debug(f"GetTaxonomy: joining hits to metadata {dbmetadata}")
         GetTaxonomy(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr",
             dbmetadata,
@@ -328,7 +487,7 @@ def main(
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Get Basic Taxonomy",
                 start_time=start_time,
                 end_time=end_time,
@@ -343,6 +502,7 @@ def main(
         logger.info("Merging truncated elements")
         start_time = time.time()
 
+        logger.debug(f"Merging truncated elements by {merge_level} within {limit} nt")
         GetAnnotBed(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax",
             merge_level,
@@ -362,7 +522,7 @@ def main(
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Merge truncated elements",
                 start_time=start_time,
                 end_time=end_time,
@@ -377,6 +537,7 @@ def main(
             logger.info("Cleaning elements")
             start_time = time.time()
 
+            logger.debug(f"MaskClean: removing EEs with > {mask_per}% soft-masking")
             MaskClean(
                 f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa",
                 mask_per,
@@ -384,7 +545,7 @@ def main(
 
             end_time = time.time()
             steps_infos.append(
-                step_info(
+                StepInfo.from_times(
                     step="Clean EEs",
                     start_time=start_time,
                     end_time=end_time,
@@ -403,6 +564,7 @@ def main(
         logger.info("Creating final taxonomy")
         start_time = time.time()
 
+        logger.debug("GetFinalTaxonomy + TagElements (Average_pident, overlap tags)")
         GetFinalTaxonomy(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt",
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax",
@@ -421,7 +583,7 @@ def main(
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Create Final Taxonomy",
                 start_time=start_time,
                 end_time=end_time,
@@ -432,10 +594,92 @@ def main(
         click.secho(f"Failed to obtain final taxonomy: {err}", err=True, fg="red")
         sys.exit(1)
 
+    if overlap != "keep":
+        try:
+            logger.info(f"Filtering overlaping elements ({overlap})")
+            start_time = time.time()
+            tmp_outputs = f"{outdir}/tmp_outputs"
+            os.makedirs(tmp_outputs, exist_ok=True)
+
+            logger.debug(
+                f"FilterOverlap strategy={overlap} "
+                f"target_families={list(target_families)} "
+                f"non_target_families={list(non_target_families)}; "
+                f"removed elements -> {tmp_outputs}"
+            )
+            FilterOverlap(
+                f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa",
+                f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.tax",
+                overlap,
+                list(target_families),
+                f"{tmp_outputs}/{prefix}.EEs.removed.fa",
+                f"{tmp_outputs}/{prefix}.EEs.removed.tax.tsv",
+                non_target_families=list(non_target_families),
+            )
+            if clean_masked:
+                FilterOverlap(
+                    f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.cl",
+                    f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.cl.tax",
+                    overlap,
+                    list(target_families),
+                    f"{tmp_outputs}/{prefix}.EEs.cleaned.removed.fa",
+                    f"{tmp_outputs}/{prefix}.EEs.cleaned.removed.tax.tsv",
+                    non_target_families=list(non_target_families),
+                )
+
+            end_time = time.time()
+            steps_infos.append(
+                StepInfo.from_times(
+                    step="Filter overlaping elements",
+                    start_time=start_time,
+                    end_time=end_time,
+                    message=f"Resolved overlaping elements with the '{overlap}' "
+                    f"strategy; filtered-out elements saved to {tmp_outputs}.",
+                )
+            )
+        except Exception as err:
+            click.secho(
+                f"Failed to filter overlaping elements: {err}", err=True, fg="red"
+            )
+            sys.exit(1)
+
+    try:
+        logger.info("Generating GFF3 annotation")
+        start_time = time.time()
+
+        logger.debug(f"WriteGFF3 (analysis={analysis}) for prefix {prefix!r}")
+        WriteGFF3(
+            f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.tax",
+            f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.gff3",
+            prefix=prefix,
+            analysis=analysis,
+        )
+        if clean_masked:
+            WriteGFF3(
+                f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.cl.tax",
+                f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.cl.gff3",
+                prefix=prefix,
+                analysis=analysis,
+            )
+
+        end_time = time.time()
+        steps_infos.append(
+            StepInfo.from_times(
+                step="Generate GFF3 annotation",
+                start_time=start_time,
+                end_time=end_time,
+                message="Generated GFF3 annotation of endogenous elements.",
+            )
+        )
+    except Exception as err:
+        click.secho(f"Failed to generate GFF3 annotation: {err}", err=True, fg="red")
+        sys.exit(1)
+
     try:
         logger.info("Extracting flaking regions")
         start_time = time.time()
 
+        logger.debug(f"Extracting {flank} nt flanks around each EE")
         GetLength(f"{outdir}/{prefix}.rn.fmt")
         GetBed(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa",
@@ -453,7 +697,7 @@ def main(
 
         end_time = time.time()
         steps_infos.append(
-            step_info(
+            StepInfo.from_times(
                 step="Extract flanking regions",
                 start_time=start_time,
                 end_time=end_time,
@@ -475,6 +719,10 @@ def main(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.tax",
             f"{outdir}/{prefix}.EEs.tax.tsv",
         )
+        os.rename(
+            f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.gff3",
+            f"{outdir}/{prefix}.EEs.gff3",
+        )
         if clean_masked:
             os.rename(
                 f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.cl",
@@ -483,6 +731,10 @@ def main(
             os.rename(
                 f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.cl.tax",
                 f"{outdir}/{prefix}.EEs.cleaned.tax.tsv",
+            )
+            os.rename(
+                f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.cl.gff3",
+                f"{outdir}/{prefix}.EEs.cleaned.gff3",
             )
         os.rename(
             f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge.fmt.fa.bed.flank.fasta",
@@ -497,6 +749,9 @@ def main(
             f"{outdir}/{prefix}.EEs.tax.tsv ------------------------ TSV file with Endogenous Elements taxonomy."
         )
         print(
+            f"{outdir}/{prefix}.EEs.gff3 --------------------------- GFF3 annotation of Endogenous Elements."
+        )
+        print(
             f"{outdir}/{prefix}.EEs.flanks.fa ---------------------- Fasta file with Endogenous Elements plus {flank}nt in each flanking regions."
         )
         if clean_masked:
@@ -506,10 +761,14 @@ def main(
             print(
                 f"{outdir}/{prefix}.EEs.cleaned.tax.tsv ---------------- TSV file with Cleaned Endogenous Elements."
             )
+            print(
+                f"{outdir}/{prefix}.EEs.cleaned.gff3 ------------------- GFF3 annotation of Cleaned Endogenous Elements."
+            )
         print("")
         if removetmp:
             logger.warning("Removing temporary files.\n")
             for tmp_file in glob.glob(f"{outdir}/*rn*"):
+                logger.debug(f"Removing temporary file {tmp_file}")
                 os.remove(tmp_file)
         else:
             if os.path.isdir(f"{outdir}/tmp_files") == False:
@@ -527,27 +786,229 @@ def main(
         click.secho(f"Failed to organize outputs: {err}", err=True, fg="red")
         sys.exit(1)
     end_running_time = time.time()
-    arguments = [
-        genome_file,
-        outdir,
-        database,
-        dbmetadata,
-        hostgenesbaits,
-        mode,
-        length,
-        flank,
-        limit,
-        range_junction,
-        mask_per,
-        clean_masked,
-        threads,
-        removetmp,
-        index_databases,
-        prefix,
-        merge_level,
-    ]
-    running_infos = running_info(
-        arguments, start_running_time, end_running_time, steps_infos
+    run_arguments = RunArguments(
+        genome_file=genome_file,
+        prefix=prefix,
+        outdir=outdir,
+        database=database,
+        dbmetadata=dbmetadata,
+        baits=hostgenesbaits,
+        mode=mode,
+        length=length,
+        flank=flank,
+        limit=limit,
+        range_junction=range_junction,
+        mask_per=mask_per,
+        clean_masked=clean_masked,
+        threads=threads,
+        removetmp=removetmp,
+        index_databases=index_databases,
+        merge_level=merge_level,
+        analysis=analysis,
+        overlap=overlap,
+        target_families=list(target_families),
+        non_target_families=list(non_target_families),
     )
+    run_info = RunInfo.from_run(
+        __version__,
+        system_info,
+        run_arguments,
+        dependencies,
+        start_running_time,
+        end_running_time,
+        steps_infos,
+    )
+    logger.debug(f"Writing run summary to {outdir}/eefinder.log")
     with open(f"{outdir}/eefinder.log", "w") as json_out:
-        json.dump(running_infos, json_out, indent=4)
+        json.dump(asdict(run_info), json_out, indent=4)
+
+
+def _common_download_options(func):
+    """Attach the -od/-pr/--refseq/--debug options shared by every command."""
+    func = click.option(
+        "--debug",
+        help="Emit verbose debug logging (download command, extraction, "
+        "per-record standardization details). default = off",
+        is_flag=True,
+    )(func)
+    func = click.option(
+        "--refseq/--all-sequences",
+        help="Restrict the download to RefSeq (default) or fetch all sequences.",
+        default=True,
+    )(func)
+    func = click.option(
+        "-pr",
+        "--prefix",
+        help="Basename for the output files, default = the dataset type "
+        "(e.g. virus.fa/virus.csv).",
+        default=None,
+    )(func)
+    func = click.option(
+        "-od",
+        "--outdir",
+        help="Path and dir to store the downloaded database.",
+        required=True,
+    )(func)
+    return func
+
+
+def _run_get_databases(
+    dataset,
+    taxon,
+    outdir,
+    prefix,
+    refseq,
+    exclude_uninformative,
+    standardize_proteins,
+    debug=False,
+):
+    """Check for the datasets binary and run :class:`GetDatabases`."""
+    if debug:
+        enable_debug()
+    logger.debug(
+        f"get-databases {dataset} arguments: taxon={taxon!r} outdir={outdir!r} "
+        f"prefix={prefix!r} refseq={refseq} "
+        f"exclude_uninformative={exclude_uninformative} "
+        f"standardize_proteins={standardize_proteins}"
+    )
+    if shutil.which(DATASETS_BINARY) is None:
+        click.secho(
+            f"'{DATASETS_BINARY}' was not found on PATH. Install the NCBI "
+            "datasets CLI (conda package 'ncbi-datasets-cli', pinned in env.yml).",
+            err=True,
+            fg="red",
+        )
+        sys.exit(1)
+    try:
+        GetDatabases(
+            dataset=dataset,
+            taxon=taxon,
+            outdir=outdir,
+            prefix=prefix,
+            refseq=refseq,
+            exclude_uninformative=exclude_uninformative,
+            standardize_proteins=standardize_proteins,
+        )
+    except Exception as err:
+        click.secho(f"Failed to download databases: {err}", err=True, fg="red")
+        sys.exit(1)
+
+
+@cli.group(name="get-databases")
+@click.version_option(__version__)
+def get_databases():
+    """Download RefSeq protein databases (and metadata) via NCBI datasets.
+
+    Each group has its own subcommand: 'virus' and 'bacteria' produce a protein
+    FASTA + metadata CSV (the screening -db/-mt inputs); 'host' produces the -bt
+    baits FASTA (no CSV).
+    """
+
+
+@get_databases.command(name="virus")
+@_common_download_options
+@click.option(
+    "-tx",
+    "--taxon",
+    help="NCBI taxon name or tax id to download (e.g. Flaviviridae, 10239). "
+    "default = 10239 (Viruses).",
+    default=10239,
+    type=str,
+)
+@click.option(
+    "--exclude-uninformative/--keep-uninformative",
+    help="Drop 'hypothetical protein' and 'uncharacterized protein' records "
+    "from the downloaded database. default = exclude",
+    default=True,
+)
+@click.option(
+    "--standardize-proteins/--raw-proteins",
+    help="Rewrite the metadata CSV 'Protein' column to canonical names using "
+    "the bundled viral protein map (also removes special characters and "
+    "capitalises the first letter). default = standardize",
+    default=True,
+)
+def get_databases_virus(
+    outdir, prefix, refseq, debug, taxon, exclude_uninformative, standardize_proteins
+):
+    """Download the RefSeq viral protein DB + metadata CSV (screening -db/-mt)."""
+    _run_get_databases(
+        dataset="virus",
+        taxon=taxon or DEFAULT_TAXA["virus"],
+        outdir=outdir,
+        prefix=prefix,
+        refseq=refseq,
+        exclude_uninformative=exclude_uninformative,
+        standardize_proteins=standardize_proteins,
+        debug=debug,
+    )
+
+
+@get_databases.command(name="bacteria")
+@_common_download_options
+@click.option(
+    "-tx",
+    "--taxon",
+    help="NCBI taxon name or tax id to download (e.g. Rickettsiales, 2). "
+    "default = 2 (Bacteria).",
+    default=2,
+    type=str,
+)
+@click.option(
+    "--exclude-uninformative/--keep-uninformative",
+    help="Drop 'hypothetical protein' and 'uncharacterized protein' records "
+    "from the downloaded database. default = exclude",
+    default=True,
+)
+@click.option(
+    "--standardize-proteins/--raw-proteins",
+    help="Clean the metadata CSV 'Protein' column (remove NCBI '[key=value]' "
+    "tags and special characters, fix common misspellings, capitalise the first "
+    "letter, drop bare CDS/ORF records). No bacterial name map is applied yet. "
+    "default = standardize",
+    default=True,
+)
+def get_databases_bacteria(
+    outdir, prefix, refseq, debug, taxon, exclude_uninformative, standardize_proteins
+):
+    """Download the RefSeq bacterial protein DB + metadata CSV (screening -db/-mt)."""
+    _run_get_databases(
+        dataset="bacteria",
+        taxon=taxon or DEFAULT_TAXA["bacteria"],
+        outdir=outdir,
+        prefix=prefix,
+        refseq=refseq,
+        exclude_uninformative=exclude_uninformative,
+        standardize_proteins=standardize_proteins,
+        debug=debug,
+    )
+
+
+@get_databases.command(name="host")
+@_common_download_options
+@click.option(
+    "-tx",
+    "--taxon",
+    help="NCBI taxon name or tax id of the host to download (e.g. 'Aedes "
+    "aegypti', 7159). Required.",
+    required=True,
+    type=str,
+)
+@click.option(
+    "--exclude-uninformative/--keep-uninformative",
+    help="Drop 'hypothetical protein' and 'uncharacterized protein' records "
+    "from the downloaded database. default = exclude",
+    default=True,
+)
+def get_databases_host(outdir, prefix, refseq, debug, taxon, exclude_uninformative):
+    """Download the host protein baits FASTA (screening -bt); no metadata CSV."""
+    _run_get_databases(
+        dataset="host",
+        taxon=taxon,
+        outdir=outdir,
+        prefix=prefix,
+        refseq=refseq,
+        exclude_uninformative=exclude_uninformative,
+        standardize_proteins=False,
+        debug=debug,
+    )
