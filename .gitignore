@@ -25,3 +25,6 @@ output/
 build/
 dist/
 results_test/
+
+# Sphinx documentation build output
+docs/_build/

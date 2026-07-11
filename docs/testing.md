@@ -84,11 +84,18 @@ failed), so `pytest -m "not integration"` runs cleanly on a bare Python install.
 `-ln 1000 -id -p 2 -lm 100`). It is a small, scenario-driven set rather than an
 exhaustive parameter sweep — each test covers one behaviour worth protecting:
 
-- **`test_matches_expected_results`** — the documented run reproduces the four
-  main outputs (`*.EEs.fa`, `*.EEs.tax.tsv`, `*.EEs.flanks.fa`, `*.EEs.gff3`)
-  **byte-for-byte** against the golden copies in
-  [`test_files/expected_results/`](../test_files/expected_results) (the
-  timestamped `eefinder.log` and temporary files are ignored).
+- **`test_matches_expected_results`** — the documented `default` run reproduces
+  the four main outputs (`*.EEs.fa`, `*.EEs.tax.tsv`, `*.EEs.flanks.fa`,
+  `*.EEs.gff3`) **byte-for-byte** against the golden copies in
+  [`test_files/expected_results/default/`](https://github.com/WallauBioinfo/EEfinder/tree/master/test_files/expected_results/default)
+  (the timestamped `eefinder.log` and temporary files are ignored).
+- **`test_matches_expected_results_gv_rv`** — the same byte-for-byte comparison
+  for a full `--translation_method gv-rv` run against
+  [`test_files/expected_results/gv-rv/`](https://github.com/WallauBioinfo/EEfinder/tree/master/test_files/expected_results/gv-rv);
+  gated on `pyrodigal-gv`/`-rv` + `blastp` + `cd-hit` and skipped otherwise.
+- **`test_translation_method_gv_drives_both_searches`** — `-tm gv` predicts
+  proteins for **both** the main and the host-bait search (a coordinates TSV
+  exists for each), with the schema unchanged.
 - **`test_clean_masked_is_subset_of_full_run`** — `--clean_masked` produces a
   populated cleaned table that is a subset of the full run.
 - **`test_merge_limit_controls_merging`** — a larger `--limit` merges
@@ -114,9 +121,10 @@ dependency version), refresh the golden files instead of editing them by hand:
 pytest -m integration --update-test
 ```
 
-`--update-test` makes `test_matches_expected_results` overwrite
-`test_files/expected_results/` with the freshly produced outputs and skip the
-comparison. Review the diff and commit the refreshed files.
+`--update-test` makes the golden tests overwrite their respective
+`test_files/expected_results/{default,gv-rv}/` directory with the freshly
+produced outputs and skip the comparison. Review the diff and commit the
+refreshed files.
 
 ## Formatting
 

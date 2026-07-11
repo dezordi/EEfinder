@@ -50,6 +50,10 @@ from eefinder.utils import (
     StepInfo,
 )
 from eefinder.normalization import standardize_protein, strip_bracket_tags
+from eefinder.translation import cluster_proteins
+
+#: cd-hit executable used to collapse identical proteins (from ``cd-hit``).
+CDHIT_BINARY = "cd-hit"
 
 #: Dataset types this module can download.
 DATASET_CHOICES = ("virus", "bacteria", "host")
@@ -428,6 +432,45 @@ def concat_protein_faas(
     return ConcatCounts(files=len(faas), total=total, written=written)
 
 
+def count_fasta_records(fasta_path: str) -> int:
+    """Return the number of records (header lines) in a FASTA file."""
+    with open(fasta_path) as handle:
+        return sum(1 for line in handle if line.startswith(">"))
+
+
+def cluster_identical_proteins(fasta_path: str, threads: int = 1) -> int:
+    """Collapse 100%-identical / 100%-coverage duplicate proteins in place.
+
+    Runs ``cd-hit`` at 100% sequence identity **and** 100% coverage of both the
+    longer and the shorter sequence (``-c 1.0 -aL 1.0 -aS 1.0``), so only
+    sequences that are identical over their entire length are merged to a single
+    representative -- a lossless deduplication of the database. ``fasta_path`` is
+    overwritten with the non-redundant set and the ``cd-hit`` ``.clstr`` sidecar
+    is removed.
+
+    Parameters
+    ----------
+    fasta_path : str
+        Protein FASTA to deduplicate (overwritten in place).
+    threads : int
+        Threads for ``cd-hit`` (``-T``).
+
+    Returns
+    -------
+    int
+        Number of duplicate sequences removed (``before - after``).
+    """
+    before = count_fasta_records(fasta_path)
+    clustered = f"{fasta_path}.nr"
+    cluster_proteins(fasta_path, clustered, threads)
+    os.replace(clustered, fasta_path)
+    clstr = f"{clustered}.clstr"
+    if os.path.exists(clstr):
+        os.remove(clstr)
+    after = count_fasta_records(fasta_path)
+    return before - after
+
+
 def find_data_report(extract_dir: str) -> str | None:
     """Return the first ``data_report.jsonl`` under ``extract_dir``, if any."""
     reports = sorted(Path(extract_dir).rglob("data_report.jsonl"))
@@ -496,6 +539,12 @@ class GetDatabases:
     standardize_proteins : bool
         Rewrite the CSV ``Protein`` column to canonical names via the bundled
         viral protein map (:func:`standardize_protein`).
+    cluster : bool
+        Collapse 100%-identical / 100%-coverage duplicate proteins with
+        ``cd-hit`` (:func:`cluster_identical_proteins`) before writing the
+        metadata CSV.
+    threads : int
+        Threads for the ``cd-hit`` clustering step.
     datasets_bin : str
         Path/name of the ``datasets`` executable.
     """
@@ -509,6 +558,8 @@ class GetDatabases:
         refseq: bool = True,
         exclude_uninformative: bool = False,
         standardize_proteins: bool = False,
+        cluster: bool = False,
+        threads: int = 1,
         datasets_bin: str = DATASETS_BINARY,
     ) -> None:
         if dataset not in DATASET_CHOICES:
@@ -520,6 +571,8 @@ class GetDatabases:
         self.refseq = refseq
         self.exclude_uninformative = exclude_uninformative
         self.standardize_proteins = standardize_proteins
+        self.cluster = cluster
+        self.threads = threads
         self.datasets_bin = datasets_bin
 
         self.get_databases()
@@ -586,6 +639,26 @@ class GetDatabases:
             )
         )
 
+        clustered_identical = 0
+        if self.cluster:
+            start = time.time()
+            clustered_identical = cluster_identical_proteins(fasta_out, self.threads)
+            remaining = counts.written - clustered_identical
+            logger.info(
+                f"Clustered {fasta_out}: removed {clustered_identical} "
+                f"100%/100% duplicate(s), {remaining} representative(s) kept"
+            )
+            steps.append(
+                StepInfo.from_times(
+                    "Cluster identical proteins",
+                    start,
+                    time.time(),
+                    f"cd-hit (100% identity / 100% coverage): removed "
+                    f"{clustered_identical} duplicate(s), {remaining} of "
+                    f"{counts.written} representative(s) kept in {fasta_out}.",
+                )
+            )
+
         dropped_standardization = 0
         if self.dataset in _METADATA_DATASETS:
             start = time.time()
@@ -629,17 +702,18 @@ class GetDatabases:
                 )
             )
 
-        kept = counts.written - dropped_standardization
+        kept = counts.written - clustered_identical - dropped_standardization
         self.sequence_counts = SequenceCounts(
             downloaded=counts.total,
             excluded_uninformative=excluded_uninformative,
+            clustered_identical=clustered_identical,
             dropped_standardization=dropped_standardization,
             kept=kept,
         )
         logger.info(
             f"Sequences: {kept} kept, "
-            f"{excluded_uninformative + dropped_standardization} dropped "
-            f"(of {counts.total} downloaded)"
+            f"{excluded_uninformative + clustered_identical + dropped_standardization}"
+            f" dropped (of {counts.total} downloaded)"
         )
         self._write_log(run_start, time.time(), steps)
 
@@ -657,6 +731,7 @@ class GetDatabases:
                 refseq=self.refseq,
                 exclude_uninformative=self.exclude_uninformative,
                 standardize_proteins=self.standardize_proteins,
+                cluster=self.cluster,
             ),
             sequence_counts=self.sequence_counts,
             start_time=start_time,

@@ -42,6 +42,7 @@ from eefinder.overlap import FilterOverlap
 from eefinder.get_databases import (
     GetDatabases,
     DATASETS_BINARY,
+    CDHIT_BINARY,
     DEFAULT_TAXA,
 )
 from eefinder.gff import WriteGFF3
@@ -850,6 +851,12 @@ def _common_download_options(func):
         is_flag=True,
     )(func)
     func = click.option(
+        "--cluster/--no-cluster",
+        help="Collapse 100%-identical / 100%-coverage duplicate proteins with "
+        "cd-hit before writing the database. default = cluster",
+        default=True,
+    )(func)
+    func = click.option(
         "--refseq/--all-sequences",
         help="Restrict the download to RefSeq (default) or fetch all sequences.",
         default=True,
@@ -878,6 +885,7 @@ def _run_get_databases(
     refseq,
     exclude_uninformative,
     standardize_proteins,
+    cluster=True,
     debug=False,
 ):
     """Check for the datasets binary and run :class:`GetDatabases`."""
@@ -887,12 +895,20 @@ def _run_get_databases(
         f"get-databases {dataset} arguments: taxon={taxon!r} outdir={outdir!r} "
         f"prefix={prefix!r} refseq={refseq} "
         f"exclude_uninformative={exclude_uninformative} "
-        f"standardize_proteins={standardize_proteins}"
+        f"standardize_proteins={standardize_proteins} cluster={cluster}"
     )
     if shutil.which(DATASETS_BINARY) is None:
         click.secho(
             f"'{DATASETS_BINARY}' was not found on PATH. Install the NCBI "
             "datasets CLI (conda package 'ncbi-datasets-cli', pinned in env.yml).",
+            err=True,
+            fg="red",
+        )
+        sys.exit(1)
+    if cluster and shutil.which(CDHIT_BINARY) is None:
+        click.secho(
+            f"'{CDHIT_BINARY}' was not found on PATH. Install it (conda package "
+            "'cd-hit', pinned in env.yml) or pass --no-cluster.",
             err=True,
             fg="red",
         )
@@ -906,6 +922,7 @@ def _run_get_databases(
             refseq=refseq,
             exclude_uninformative=exclude_uninformative,
             standardize_proteins=standardize_proteins,
+            cluster=cluster,
         )
     except Exception as err:
         click.secho(f"Failed to download databases: {err}", err=True, fg="red")
@@ -947,7 +964,14 @@ def get_databases():
     default=True,
 )
 def get_databases_virus(
-    outdir, prefix, refseq, debug, taxon, exclude_uninformative, standardize_proteins
+    outdir,
+    prefix,
+    cluster,
+    refseq,
+    debug,
+    taxon,
+    exclude_uninformative,
+    standardize_proteins,
 ):
     """Download the RefSeq viral protein DB + metadata CSV (screening -db/-mt)."""
     _run_get_databases(
@@ -958,6 +982,7 @@ def get_databases_virus(
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=standardize_proteins,
+        cluster=cluster,
         debug=debug,
     )
 
@@ -987,7 +1012,14 @@ def get_databases_virus(
     default=True,
 )
 def get_databases_bacteria(
-    outdir, prefix, refseq, debug, taxon, exclude_uninformative, standardize_proteins
+    outdir,
+    prefix,
+    cluster,
+    refseq,
+    debug,
+    taxon,
+    exclude_uninformative,
+    standardize_proteins,
 ):
     """Download the RefSeq bacterial protein DB + metadata CSV (screening -db/-mt)."""
     _run_get_databases(
@@ -998,6 +1030,7 @@ def get_databases_bacteria(
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=standardize_proteins,
+        cluster=cluster,
         debug=debug,
     )
 
@@ -1018,7 +1051,9 @@ def get_databases_bacteria(
     "from the downloaded database. default = exclude",
     default=True,
 )
-def get_databases_host(outdir, prefix, refseq, debug, taxon, exclude_uninformative):
+def get_databases_host(
+    outdir, prefix, cluster, refseq, debug, taxon, exclude_uninformative
+):
     """Download the host protein baits FASTA (screening -bt); no metadata CSV."""
     _run_get_databases(
         dataset="host",
@@ -1028,5 +1063,6 @@ def get_databases_host(outdir, prefix, refseq, debug, taxon, exclude_uninformati
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=False,
+        cluster=cluster,
         debug=debug,
     )

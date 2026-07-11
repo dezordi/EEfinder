@@ -132,6 +132,7 @@ class DownloadArguments:
     refseq: bool
     exclude_uninformative: bool
     standardize_proteins: bool
+    cluster: bool
 
 
 @dataclass
@@ -140,6 +141,7 @@ class SequenceCounts:
 
     downloaded: int
     excluded_uninformative: int
+    clustered_identical: int
     dropped_standardization: int
     kept: int
 

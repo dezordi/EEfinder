@@ -1,3 +1,0 @@
-include env.yml
-include CHANGELOG.md
-recursive-include eefinder/data *.tsv

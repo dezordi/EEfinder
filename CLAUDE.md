@@ -50,7 +50,15 @@ The `screening` command orchestrates the steps in this order:
 1. **prepare_data.py** `InsertPrefix` — prefix every FASTA header (`>PREFIX/…`).
 2. **clean_data.py** `RemoveShortSequences` — drop contigs below `--length`.
 3. **make_database.py** `MakeDB` — build BLAST or DIAMOND DBs (`--index_databases`).
-4. **similarity_analysis.py** `SimilaritySearch` — blastx / diamond blastx.
+4. **similarity_analysis.py** `SimilaritySearch` — the similarity search, run
+   **twice** (main EE search + host-bait search). `--translation_method`
+   controls both: `default` = six-frame `blastx`/`diamond blastx`; `gv`/`rv`/
+   `gv-rv` predict proteins (**translation.py**, pyrodigal-gv/-rv, + `cd-hit`
+   dedup for `gv-rv`), align with `blastp`/`diamond blastp`, then trace the
+   amino-acid coordinates back to contig nucleotides (via a per-protein coords
+   TSV) so `SimilaritySearch` always emits the same `{query}.blastx` schema. The
+   single `translation_method` value is threaded to both searches, so they never
+   diverge.
 5. **filter_table.py** `FilterTable` — filter redundant hits by `qseqid`/range/sense.
 6. **bed.py** `GetFasta` — extract putative EE sequences (bedtools).
 7. **compare_results.py** `CompareResults` — drop EEs that hit host baits harder.
@@ -81,7 +89,12 @@ finishes by renaming intermediates to `PREFIX.EEs.*` and writing `eefinder.log`
 (JSON: `eefinder_version`, `arguments`, `dependencies`, timing, and per-step
 info). `get-databases` similarly writes `{outdir}/{prefix}.log` (`DownloadInfo`:
 version, arguments, per-phase steps, timing, and a `sequence_counts` block —
-`downloaded`/`excluded_uninformative`/`dropped_standardization`/`kept`).
+`downloaded`/`excluded_uninformative`/`clustered_identical`/
+`dropped_standardization`/`kept`). Unless `--no-cluster`, `get-databases` runs a
+`cd-hit` 100%-identity/100%-coverage dedup on the protein FASTA
+(`cluster_identical_proteins`, reusing `translation.cluster_proteins`) before
+building the metadata CSV, so the CSV only describes the retained
+representatives.
 
 ### Inputs / outputs
 
@@ -96,23 +109,30 @@ version, arguments, per-phase steps, timing, and a `sequence_counts` block —
 
 ## Environment & tooling
 
-External binaries are **required at runtime**: `blastx`/`makeblastdb` (BLAST),
-`diamond`, `bedtools` (for `screening`) and `datasets` (NCBI datasets CLI, for
-`get-databases`). They are not pip-installable — use conda/micromamba.
+External binaries are **required at runtime**: `blastx`/`blastp`/`makeblastdb`
+(BLAST), `diamond`, `bedtools` (for `screening`) and `datasets` (NCBI datasets
+CLI, for `get-databases`); `cd-hit` is needed for `--translation_method gv-rv`
+and for the `get-databases` `--cluster` step (100%/100% duplicate collapse, on
+by default). They are not pip-installable — use conda/micromamba.
+The `gv`/`rv`/`gv-rv` methods also need the pip packages `pyrodigal-gv` and
+`pyrodigal-rv` (pinned in `env.yml`).
 
 ```bash
 micromamba env create -f env.yml      # or: conda env create -f env.yml
 micromamba activate EEfinder
 pip install .                         # or `pip install -e .` for development
-pip install -r requirements-dev.txt   # pytest + black
+pip install ".[dev]"                  # + pytest + black (or requirements-dev.txt)
 ```
 
-- Python runtime deps: biopython, pandas (<2), numpy (<2), click. The version
-  is read via stdlib `importlib.metadata` (no `pkg_resources`/`setuptools`
-  runtime dependency).
-- Build metadata is in `setup.py`; `pyproject.toml` holds **only** black +
-  pytest config (do not add a `[build-system]` there without also migrating
-  `setup.py`).
+- Python runtime deps (declared in `pyproject.toml`): click, biopython,
+  pandas (<2), numpy (<2). `pip install .` pulls them; the external binaries
+  still come from `env.yml`.
+- Build metadata lives in `pyproject.toml` (**hatchling** backend, `[project]`
+  table with runtime deps + `dev` extra + the `eefinder` console script). There
+  is no `setup.py` / `MANIFEST.in`. The same file also holds the black and pytest
+  config. The version is set in `[project].version`; `eefinder/__init__.py` reads
+  it back at runtime via stdlib `importlib.metadata` (no `pkg_resources` /
+  `setuptools` runtime dependency).
 
 ## Testing
 
@@ -149,4 +169,4 @@ pytest -m integration       # end-to-end CLI runs against test_files/
 
 ## Changelog
 
-Record notable changes per session in `CHANGELOG.md` (Keep a Changelog format).
+Record notable changes per session in a local `CHANGELOG.md`.

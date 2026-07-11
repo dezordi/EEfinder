@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pandas as pd
+import pytest
 from click.testing import CliRunner
 
 from eefinder.scripts.main import cli
@@ -15,7 +16,9 @@ from eefinder.get_databases import (
     _genus_family_from_lineage,
     build_download_command,
     build_metadata_frame,
+    cluster_identical_proteins,
     concat_protein_faas,
+    count_fasta_records,
     filter_fasta_by_ids,
     find_data_report,
     molecule_type_for_family,
@@ -24,6 +27,8 @@ from eefinder.get_databases import (
     standardize_protein,
 )
 from eefinder.normalization import strip_bracket_tags
+
+from conftest import binaries_available
 
 
 def test_standardize_protein_maps_rdrp_synonyms_within_rna_scope():
@@ -395,8 +400,6 @@ def test_standardize_protein_dispatches_per_target():
 
 
 def test_standardize_protein_rejects_unknown_target():
-    import pytest
-
     with pytest.raises(ValueError):
         standardize_protein("capsid protein", "ssRNA(+)", target="plant")
 
@@ -848,3 +851,41 @@ def test_metadata_frame_roundtrips_to_expected_csv_schema(tmp_path):
     frame.to_csv(csv, index=False)
     header = pd.read_csv(csv).columns.tolist()
     assert header == METADATA_COLUMNS
+
+
+def test_count_fasta_records_counts_headers(tmp_path):
+    fasta = tmp_path / "p.fa"
+    fasta.write_text(">a\nMKAA\n>b\nMK\nAA\n>c\nMM\n")
+    assert count_fasta_records(str(fasta)) == 3
+    empty = tmp_path / "empty.fa"
+    empty.write_text("")
+    assert count_fasta_records(str(empty)) == 0
+
+
+@pytest.mark.skipif(not binaries_available("cd-hit"), reason="requires cd-hit on PATH")
+def test_cluster_identical_proteins_removes_exact_duplicates(tmp_path):
+    """100%/100% clustering drops an exact duplicate and keeps distinct ones."""
+    fasta = tmp_path / "db.fa"
+    # PROT_B is byte-identical to PROT_A (a duplicate); PROT_C is distinct. A
+    # diverse peptide avoids cd-hit's low-complexity edge cases.
+    peptide = "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEK"
+    fasta.write_text(
+        f">PROT_A rep [Some virus]\n{peptide}\n"
+        f">PROT_B dup [Some virus]\n{peptide}\n"
+        f">PROT_C other [Other virus]\n{peptide[::-1]}\n"
+    )
+    removed = cluster_identical_proteins(str(fasta), threads=1)
+
+    assert removed == 1
+    assert count_fasta_records(str(fasta)) == 2
+    # The cd-hit .clstr sidecar is cleaned up, not left next to the database.
+    assert not (tmp_path / "db.fa.nr.clstr").exists()
+    assert not (tmp_path / "db.fa.nr").exists()
+    ids = {
+        line[1:].split()[0]
+        for line in fasta.read_text().splitlines()
+        if line.startswith(">")
+    }
+    # The representative of the identical pair survives, plus the distinct one.
+    assert "PROT_C" in ids
+    assert len(ids & {"PROT_A", "PROT_B"}) == 1
