@@ -24,6 +24,7 @@ from eefinder.prepare_data import InsertPrefix
 from eefinder.clean_data import RemoveShortSequences, MaskClean
 from eefinder.make_database import MakeDB
 from eefinder.similarity_analysis import SimilaritySearch
+from eefinder.translation import TRANSLATION_METHODS
 from eefinder.filter_table import FilterTable
 from eefinder.get_taxonomy import GetTaxonomy, GetFinalTaxonomy, GetCleanedTaxonomy
 from eefinder.bed import (
@@ -245,6 +246,18 @@ def cli():
     multiple=True,
 )
 @click.option(
+    "-tm",
+    "--translation_method",
+    help="How proteins are obtained for the similarity searches (applied to "
+    "BOTH the main and the host-bait search): 'default' = six-frame "
+    "blastx/diamond blastx; 'gv' = pyrodigal-gv prediction; 'rv' = pyrodigal-rv "
+    "prediction; 'gv-rv' = both predictions clustered with cd-hit (100%/100%). "
+    "Prediction modes align with blastp and map coordinates back to nucleotides. "
+    "default = default",
+    default="default",
+    type=click.Choice(list(TRANSLATION_METHODS)),
+)
+@click.option(
     "--debug",
     help="Emit verbose debug logging (intermediate file paths, per-step "
     "details). default = off",
@@ -272,6 +285,7 @@ def screening(
     overlap,
     target_families,
     non_target_families,
+    translation_method,
     debug,
 ):
     """Run the EEfinder screening pipeline on a genome."""
@@ -291,7 +305,8 @@ def screening(
         f"index_databases={index_databases} prefix={prefix!r} "
         f"merge_level={merge_level!r} analysis={analysis!r} overlap={overlap!r} "
         f"target_families={list(target_families)} "
-        f"non_target_families={list(non_target_families)}"
+        f"non_target_families={list(non_target_families)} "
+        f"translation_method={translation_method!r}"
     )
 
     system_info = collect_system_info()
@@ -388,9 +403,10 @@ def screening(
         query = f"{outdir}/{prefix}.rn.fmt"
 
         logger.debug(
-            f"SimilaritySearch ({mode}): {query} vs {database} -> {query}.blastx"
+            f"SimilaritySearch ({mode}, translation={translation_method}): "
+            f"{query} vs {database} -> {query}.blastx"
         )
-        SimilaritySearch(query, database, threads, mode)
+        SimilaritySearch(query, database, threads, mode, translation_method)
         logger.debug(
             f"FilterTable EE: {query}.blastx (range_junction={range_junction})"
         )
@@ -442,9 +458,10 @@ def screening(
         start_time = time.time()
         query = f"{outdir}/{prefix}.rn.fmt.blastx.filtred.bed.fasta"
         logger.debug(
-            f"SimilaritySearch ({mode}) vs host baits: {query} vs {hostgenesbaits}"
+            f"SimilaritySearch ({mode}, translation={translation_method}) vs host "
+            f"baits: {query} vs {hostgenesbaits}"
         )
-        SimilaritySearch(query, hostgenesbaits, threads, mode)
+        SimilaritySearch(query, hostgenesbaits, threads, mode, translation_method)
         logger.debug(
             f"FilterTable HOST: {query}.blastx (range_junction={range_junction})"
         )
@@ -808,6 +825,7 @@ def screening(
         overlap=overlap,
         target_families=list(target_families),
         non_target_families=list(non_target_families),
+        translation_method=translation_method,
     )
     run_info = RunInfo.from_run(
         __version__,

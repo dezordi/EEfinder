@@ -60,6 +60,7 @@ def _run_arguments() -> RunArguments:
         overlap="keep",
         target_families=[],
         non_target_families=[],
+        translation_method="default",
     )
 
 

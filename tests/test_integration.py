@@ -19,6 +19,8 @@ to regress:
 from __future__ import annotations
 
 import filecmp
+import importlib.util
+import re
 import shutil
 import subprocess
 
@@ -26,6 +28,10 @@ import pandas as pd
 import pytest
 
 from conftest import binaries_available
+
+_PYRODIGAL = importlib.util.find_spec("pyrodigal_gv") and importlib.util.find_spec(
+    "pyrodigal_rv"
+)
 
 REQUIRED_BINARIES = ("eefinder", "blastx", "makeblastdb", "bedtools")
 
@@ -127,20 +133,21 @@ def test_matches_expected_results(
     after an intentional dependency-version change), then commit them.
     """
     outdir = tmp_path / "out"
+    expected = expected_results / "default"
     _run_eefinder(outdir, genome_file, virus_db, virus_metadata, filter_db)
 
     if update_expected:
-        expected_results.mkdir(parents=True, exist_ok=True)
+        expected.mkdir(parents=True, exist_ok=True)
         for name in MAIN_OUTPUTS:
-            shutil.copy(outdir / name, expected_results / name)
-        pytest.skip(f"--update-test: refreshed {expected_results}")
+            shutil.copy(outdir / name, expected / name)
+        pytest.skip(f"--update-test: refreshed {expected}")
 
     for name in MAIN_OUTPUTS:
         produced = outdir / name
         assert produced.is_file(), f"missing output: {name}"
         assert filecmp.cmp(
-            produced, expected_results / name, shallow=False
-        ), f"{name} differs from test_files/expected_results/{name}"
+            produced, expected / name, shallow=False
+        ), f"{name} differs from test_files/expected_results/default/{name}"
 
     # Guard against a corrupted golden set.
     tax = pd.read_csv(outdir / f"{PREFIX}.EEs.tax.tsv", sep="\t")
@@ -149,6 +156,88 @@ def test_matches_expected_results(
     # Without --removetmp the intermediates are archived and the run log written.
     assert (outdir / "tmp_files").is_dir()
     assert (outdir / "eefinder.log").is_file()
+
+
+@pytest.mark.skipif(
+    not (_PYRODIGAL and binaries_available("blastp", "cd-hit")),
+    reason="requires pyrodigal-gv/-rv, blastp and cd-hit",
+)
+def test_matches_expected_results_gv_rv(
+    tmp_path,
+    genome_file,
+    virus_db,
+    virus_metadata,
+    filter_db,
+    expected_results,
+    update_expected,
+):
+    """``--translation_method gv-rv`` reproduces its golden outputs byte-for-byte.
+
+    Mirrors :func:`test_matches_expected_results` for the prediction-based path
+    (pyrodigal-gv + pyrodigal-rv + cd-hit, then ``blastp``). Refresh with
+    ``pytest --update-test`` after an intended dependency change.
+    """
+    outdir = tmp_path / "out"
+    expected = expected_results / "gv-rv"
+    _run_eefinder(
+        outdir,
+        genome_file,
+        virus_db,
+        virus_metadata,
+        filter_db,
+        "-tm",
+        "gv-rv",
+    )
+
+    if update_expected:
+        expected.mkdir(parents=True, exist_ok=True)
+        for name in MAIN_OUTPUTS:
+            shutil.copy(outdir / name, expected / name)
+        pytest.skip(f"--update-test: refreshed {expected}")
+
+    for name in MAIN_OUTPUTS:
+        produced = outdir / name
+        assert produced.is_file(), f"missing output: {name}"
+        assert filecmp.cmp(
+            produced, expected / name, shallow=False
+        ), f"{name} differs from test_files/expected_results/gv-rv/{name}"
+
+    # Guard against a corrupted golden set.
+    tax = pd.read_csv(outdir / f"{PREFIX}.EEs.tax.tsv", sep="\t")
+    assert EXPECTED_TAX_COLUMNS.issubset(tax.columns)
+    # gv-rv also traces hits back to nucleotide coordinates on the contig.
+    assert all(re.search(r":\d+-\d+$", str(eid)) for eid in tax["Element-ID"])
+
+
+@pytest.mark.skipif(
+    not (_PYRODIGAL and binaries_available("blastp")),
+    reason="requires pyrodigal-gv/-rv and blastp",
+)
+def test_translation_method_gv_drives_both_searches(
+    tmp_path, genome_file, virus_db, virus_metadata, filter_db
+):
+    """``-tm gv`` predicts proteins for BOTH the main and the host-bait search.
+
+    The output keeps the same schema (nucleotide ``Element-ID``s), and a
+    predicted-protein coordinates TSV exists for each of the two searches —
+    proving the translation method is applied consistently, not just to the main
+    step.
+    """
+    outdir = tmp_path / "out"
+    _run_eefinder(outdir, genome_file, virus_db, virus_metadata, filter_db, "-tm", "gv")
+
+    tax = pd.read_csv(outdir / f"{PREFIX}.EEs.tax.tsv", sep="\t")
+    assert EXPECTED_TAX_COLUMNS.issubset(tax.columns)
+    # Element-IDs are traced back to nucleotide coordinates on the contig.
+    assert all(re.search(r":\d+-\d+$", str(eid)) for eid in tax["Element-ID"])
+
+    tmp = outdir / "tmp_files"
+    main_coords = list(tmp.glob(f"{PREFIX}.rn.fmt.pred.coords.tsv"))
+    bait_coords = list(
+        tmp.glob(f"{PREFIX}.rn.fmt.blastx.filtred.bed.fasta.pred.coords.tsv")
+    )
+    assert main_coords, "prediction did not run for the main EE search"
+    assert bait_coords, "prediction did not run for the host-bait search"
 
 
 def test_clean_masked_is_subset_of_full_run(

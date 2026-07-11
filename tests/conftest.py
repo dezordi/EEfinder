@@ -67,7 +67,12 @@ def filter_db() -> Path:
 
 @pytest.fixture(scope="session")
 def expected_results() -> Path:
-    """Directory of golden main outputs for the example run."""
+    """Base directory of golden main outputs, one subdir per translation method.
+
+    ``expected_results/default/`` holds the six-frame ``blastx`` run and
+    ``expected_results/gv-rv/`` the ``--translation_method gv-rv`` run; tests
+    pick the subdir for the method they exercise.
+    """
     return TEST_FILES / "expected_results"
 
 

@@ -118,6 +118,7 @@ class RunArguments:
     overlap: str
     target_families: list
     non_target_families: list
+    translation_method: str
 
 
 @dataclass

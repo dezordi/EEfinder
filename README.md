@@ -186,6 +186,30 @@ its source tree, point it at the reference file with
 > Note: the default `blastx` mode is the tested, reliable path. The DIAMOND
 > modes (`-md fast`, etc.) depend on the `diamond` build pinned in `env.yml`.
 
+##### Translation method (`--translation_method` / `-tm`)
+
+By default the similarity search translates the genome in the six reading frames
+(`blastx` / `diamond blastx`). `--translation_method` swaps this for up-front
+protein prediction, and applies to **both** searches in a run (the main EE
+search and the host-bait search) so they never diverge:
+
+| Value | Behaviour |
+|-------|-----------|
+| `default` | Six-frame `blastx` / `diamond blastx` (current behaviour). |
+| `gv` | Predict proteins with [pyrodigal-gv](https://github.com/althonos/pyrodigal-gv), align with `blastp` / `diamond blastp`. |
+| `rv` | Predict proteins with [pyrodigal-rv](https://github.com/LanderDC/pyrodigal-rv), align with `blastp` / `diamond blastp`. |
+| `gv-rv` | Run both predictors, drop redundancy with `cd-hit` (100%/100%), then align. |
+
+```bash
+eefinder screening ... -tm gv
+```
+
+The prediction modes map each protein hit's amino-acid coordinates back to
+nucleotide coordinates on the source contig, so the output schema (and every
+downstream step) is identical to `default`. They need the extra dependencies
+`pyrodigal-gv`, `pyrodigal-rv` (pip) and — for `gv-rv` — `cd-hit` (all pinned in
+`env.yml`).
+
 #### Tests
 
 EEfinder has a `pytest` suite (unit tests for the data-processing steps plus
