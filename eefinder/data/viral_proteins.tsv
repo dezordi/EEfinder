@@ -50,7 +50,7 @@ Gag	gag polyprotein	exact	RT
 Env	env protein	exact	RT
 Env	envelope protein	exact	RT
 Env	env	exact	RT
-integrase (IN)	integrase	contains	RT; dsDNA	catches "putative integrase", "site-specific integrase", "phage integrase"
+Integrase	integrase	contains	RT; dsDNA	catches "putative integrase", "site-specific integrase", "phage integrase"
 Major Capsid Protein	major capsid protein	exact	dsDNA
 Portal Protein	portal protein	exact	dsDNA
 Terminase Large Subunit	terminase large subunit	exact	dsDNA
