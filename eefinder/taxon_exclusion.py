@@ -5,28 +5,13 @@ The ``datasets`` CLI can download a taxon, but it cannot download a taxon
 exclusion flag. That matters because SARS-CoV-2 (tax id 2697049) is 61% of every
 viral record in GenBank, so ``get-databases virus --all-sequences`` spends most
 of its time and disk on one virus.
-
-The way out is to never ask for the branch in the first place. For a root taxon
-``R`` and an excluded taxon ``X`` below it, walk the lineage ``R -> ... -> X``
-and, at each step, keep every child except the one that leads to ``X``. The
-union of those siblings is exactly ``subtree(R) - subtree(X)``, and it is small
-enough to hand back to ``datasets`` through ``--inputfile``: excluding
-SARS-CoV-2 from all viruses yields 63 taxa.
-
-One caveat is inherent to the method: records attached **directly** to an
-internal node on that path (``"Betacoronavirus sp."`` and friends) belong to no
-child, so they are not fetched. Measured against NCBI's own totals, that is 273
-of 5.8 million records (0.005%) for the SARS-CoV-2 case -- all of them
-unclassified entries whose genus and family EEfinder could not resolve anyway.
 """
 
 from __future__ import annotations
-
 import json
 import shlex
 import subprocess
 from typing import NamedTuple
-
 from eefinder.log import logger
 
 #: The ``datasets`` executable.

@@ -88,8 +88,85 @@ suggested_name <TAB> current_name <TAB> match_type <TAB> molecule_type_scope <TA
   becomes `Unknown`. Names beginning with `hypothetical` (any spelling) are also
   flagged `Unknown` and dropped from the FASTA and CSV.
 
-## `ictv_genome_composition.tsv`
+## `ictv_genome_composition.tsv` — ICTV genome-composition table
 
-ICTV genome-composition table (family → molecule type), sourced from
-<https://ictv.global/virus-properties>. Used to fill the `Molecule_type` column
-of the metadata CSV, which the NCBI datasets report does not provide.
+Maps a virus **family** to its genome composition (`dsDNA`, `ssRNA(+)`,
+`ssRNA-RT`, …). This is the only source of the `Molecule_type` column in the
+metadata CSV: the NCBI datasets taxonomy report does not carry it.
+
+Loaded by `eefinder/get_databases.py` (`_load_genome_composition`, exposed as
+`molecule_type_for_family`).
+
+### Format
+
+```
+Family <TAB> Genome
+```
+
+- One header row, skipped on load. Only the first two tab-separated fields are
+  read, so trailing columns are ignored.
+- The lookup is **exact and case-sensitive**. A family that is absent — or
+  present under a different spelling — yields an **empty** `Molecule_type`, with
+  no warning. Bacterial families are absent by design.
+- A family with more than one composition carries them `"; "`-joined, e.g.
+  `Pleolipoviridae → ssDNA; ssDNA(+/-); dsDNA`.
+
+> **Watch the token order.** For multi-value families `_in_scope` in
+> `normalization.py` tests the DNA/dsRNA molecule-type scopes with `startswith`,
+> so only the *first* token decides them: a family stored as `dsDNA; ssDNA` does
+> **not** satisfy an `ssDNA`-scoped protein rule, while `ssDNA; dsDNA` does. Keep
+> the order the VMR delivers rather than sorting the tokens.
+
+### Source
+
+The ICTV **Virus Metadata Resource (VMR)**: <https://ictv.global/vmr>, which
+publishes one `.xlsx` per Master Species List release
+(`VMR_MSL<n>.v<n>.<YYYYMMDD>.xlsx`). Its data sheet has `Family` and `Genome`
+columns that correspond one-to-one to this file's two columns.
+
+Note that <https://ictv.global/virus-properties> — the ICTV Report chapter that
+describes these categories — is **an HTML page with no downloadable table**. It
+explains the vocabulary; the VMR is what you regenerate from.
+
+### Regenerating it
+
+Use [`accessory_scripts/update_ictv_table.py`](../../accessory_scripts/update_ictv_table.py).
+It downloads the newest VMR, rebuilds the table, and reports what changed. It
+parses the spreadsheet with the standard library only, so it needs no extra
+dependency:
+
+```bash
+# see what a new MSL release would change, without writing anything
+python accessory_scripts/update_ictv_table.py --dry-run
+
+# write the regenerated table over the bundled one
+python accessory_scripts/update_ictv_table.py
+
+# work from a VMR file you already downloaded
+python accessory_scripts/update_ictv_table.py -in VMR_MSL41.v1.20260729.xlsx
+```
+
+The grouping rule the script implements, if you ever need to redo it by hand:
+collect the distinct genome compositions per family, in the order the VMR lists
+them, and join them with `"; "`.
+
+> **The one trap.** A VMR `Genome` cell **may itself already be a
+> `;`-separated list**, so the cells must be split into atomic tokens before
+> deduplicating. Joining the distinct *cell values* instead emits a composite
+> value next to its own parts — `Arenaviridae` comes out as
+> `ssRNA(-); ssRNA(+/-); ssRNA(-); ssRNA(+/-)`.
+
+### What to check after regenerating
+
+The script prints each of these; all three are silent-failure modes:
+
+1. **Removed families.** A family that vanished was more likely *renamed* than
+   retired — the ICTV renames taxa every release. Every record still carrying
+   the old name would get an empty `Molecule_type`.
+2. **Families with no composition** in the VMR, which also produce an empty
+   `Molecule_type`.
+3. **Multi-value families**, whose first token drives the scope rules above.
+   Review these when protein standardisation output changes unexpectedly.
+
+Then run `pytest -m "not integration" tests/test_get_databases.py` — it asserts
+`Molecule_type` values taken from this table (e.g. `Flaviviridae → ssRNA(+)`).

@@ -1,10 +1,8 @@
 """Build BLAST or DIAMOND protein databases from a FASTA file."""
 
 from __future__ import annotations
-
 import shlex
 import subprocess
-
 from Bio.Blast.Applications import NcbimakeblastdbCommandline
 
 #: DIAMOND / BLAST modes that use NCBI BLAST rather than DIAMOND.

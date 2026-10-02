@@ -7,7 +7,6 @@ run actually used, flagging any that differ from the versions pinned in
 """
 
 from __future__ import annotations
-
 import getpass
 import os
 import platform
@@ -16,7 +15,6 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-
 import numpy
 import pandas
 

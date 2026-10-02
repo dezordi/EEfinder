@@ -12,7 +12,6 @@ import faulthandler
 import io
 import signal
 import time
-
 import click
 import re
 import os
@@ -91,9 +90,8 @@ def _enable_stack_dumps() -> None:
 def report_run_context(system, dependencies):
     """Log the EEfinder version, host context and dependency versions.
 
-    Prokka-style startup banner. Emits a warning for any dependency whose
-    runtime version differs from the ``env.yml`` pin or that could not be found
-    on ``PATH``.
+    Emits a warning for any dependency whose runtime version differs from the ``env.yml``
+    pin or that could not be found on ``PATH``.
     """
     logger.info(f"This is EEfinder {__version__}")
     logger.info(f"Homepage is {HOMEPAGE}")
@@ -116,8 +114,8 @@ def report_run_context(system, dependencies):
 def cli():
     """EEfinder: find Endogenous Elements in eukaryote genomes.
 
-    Use ``screening`` to run the EE-finding pipeline and ``get-databases`` to
-    download the RefSeq protein databases it needs.
+    Use ``screening`` to run the identify endogenous elements and ``get-databases``
+    to download the RefSeq protein databases it needs.
     """
     _enable_stack_dumps()
 

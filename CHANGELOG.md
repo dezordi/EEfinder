@@ -64,6 +64,13 @@ what changed, not how each option works.
   `test_files/`, including byte-for-byte golden comparisons of the main outputs.
   A GitHub Actions workflow runs the binary-free tests on every pull request.
   See [Testing](docs/testing.md).
+- **`accessory_scripts/update_ictv_table.py`** regenerates the bundled ICTV
+  genome-composition table (the source of `Molecule_type`) from the current ICTV
+  Virus Metadata Resource, reporting what a new Master Species List release would
+  change and flagging the families whose rename would silently empty
+  `Molecule_type`. The table's format and update procedure are now documented in
+  `eefinder/data/README.md`, which previously only recorded where the file came
+  from — and pointed at an ICTV page that has no downloadable table.
 - **Documentation pages for all of the above**, plus a `CHANGELOG.md` (this
   file). The Read-the-Docs site itself arrived in 1.1.2.
 
@@ -74,12 +81,6 @@ what changed, not how each option works.
 - **`--merge_level` now defaults to `family`** instead of `genus`, so truncated
   fragments of one integration are merged more readily by default.
   **(Breaking: changes results.)**
-- **Updated the pinned tool versions in `env.yml`** — bedtools 2.27.1 → 2.31.1,
-  BLAST 2.5.0 → 2.17.0, DIAMOND 2.0.15 → 2.2.3 — and added the dependencies the
-  new features need (`ncbi-datasets-cli`, `cd-hit`, `pyrodigal-gv`,
-  `pyrodigal-rv`). `env.yml` now pins only the direct dependencies and lets conda
-  resolve the rest; the old frozen transitive pins conflicted with BLAST 2.17's
-  openssl 3.x.
 - **The genome is prepared in a single pass.** Prefixing the headers and dropping
   short contigs were two steps chained through an intermediate file, writing the
   whole genome to disk twice — 3.2 GB of intermediates for a 1.6 GB genome, the

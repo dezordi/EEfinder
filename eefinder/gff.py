@@ -5,7 +5,6 @@ https://github.com/the-sequence-ontology/specifications/blob/master/gff3.md
 """
 
 from __future__ import annotations
-
 import pandas as pd
 
 #: Mandatory first line of a GFF3 file.

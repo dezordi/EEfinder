@@ -1,7 +1,6 @@
 """Flag overlapping elements and compute per-element average identity."""
 
 from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 

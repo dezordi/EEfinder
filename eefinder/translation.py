@@ -19,14 +19,11 @@ unchanged regardless of the chosen method.
 """
 
 from __future__ import annotations
-
 import re
 import shlex
 import subprocess
-
 import pandas as pd
 from Bio import SeqIO
-
 from eefinder.filter_table import OUTFMT6_COLUMNS
 from eefinder.log import logger
 

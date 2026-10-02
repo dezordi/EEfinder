@@ -7,15 +7,12 @@ serialise them to JSON.
 """
 
 from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
-
 import pandas as pd
-
 from eefinder.log import logger
 
 if TYPE_CHECKING:

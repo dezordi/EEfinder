@@ -25,7 +25,6 @@ from the bundled ICTV genome-composition table (``data/``) keyed by family.
 """
 
 from __future__ import annotations
-
 import glob
 import json
 import os
@@ -39,10 +38,8 @@ from datetime import datetime
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import NamedTuple
-
 import pandas as pd
 from Bio import SeqIO
-
 from eefinder import __version__
 from eefinder.log import logger
 from eefinder.utils import (

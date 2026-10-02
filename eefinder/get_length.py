@@ -1,7 +1,6 @@
 """Produce a genome length index (``<id>\\t<length>``) for bedtools slop."""
 
 from __future__ import annotations
-
 from Bio import SeqIO
 
 

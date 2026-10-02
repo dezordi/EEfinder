@@ -195,7 +195,7 @@ pytest -m integration       # end-to-end CLI runs against test_files/
   `main.py`.
 - **The default `blastx` mode is the reliable path.** The DIAMOND modes can
   fail silently because the subprocess stderr is routed to `DEVNULL`; verify the
-  `diamond` build (env pins `diamond=2.2.3`) if a DIAMOND run produces no hits.
+  `diamond` build (env pins `diamond=2.0.15`) if a DIAMOND run produces no hits.
 - Keep changes minimal and focused; update `CHANGELOG.md` each session.
 
 ## Changelog

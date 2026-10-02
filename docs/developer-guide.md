@@ -52,7 +52,7 @@ communicate through files on disk whose names accrete suffixes (`.rn.fmt`,
   expected columns means changing that list *and* the offsets together.
 - **The default `blastx` mode is the reliable path.** The DIAMOND modes can fail
   silently because the subprocess stderr is routed to `DEVNULL`; verify the
-  `diamond` build (env pins `diamond=2.2.3`) if a DIAMOND run produces no hits.
+  `diamond` build (env pins `diamond=2.0.15`) if a DIAMOND run produces no hits.
 - **Debug logging:** `--debug` (on both commands) lowers the `eefinder` logger to
   DEBUG via `log.enable_debug()`; the `logger.debug(...)` calls throughout are
   silent otherwise.

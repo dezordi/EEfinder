@@ -1,10 +1,8 @@
 """Attach taxonomy metadata to filtered hits and build the EE taxonomy table."""
 
 from __future__ import annotations
-
 import csv
 import re
-
 import pandas as pd
 from Bio import SeqIO
 from eefinder.utils import check_metadata_columns

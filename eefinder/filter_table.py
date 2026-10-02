@@ -1,11 +1,9 @@
 """Filter a translated-search tabular result down to non-redundant hits."""
 
 from __future__ import annotations
-
 import glob
 import os
 import shutil
-
 import pandas as pd
 
 #: Standard BLAST/DIAMOND ``outfmt 6`` columns, in order.

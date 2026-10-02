@@ -1,7 +1,6 @@
 """Sequence-level cleaning: length filtering and soft-mask filtering."""
 
 from __future__ import annotations
-
 from Bio import SeqIO
 
 #: Bases counted as "masked" when deciding whether an EE sits in a repetitive

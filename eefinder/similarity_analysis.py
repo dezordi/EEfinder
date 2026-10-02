@@ -10,12 +10,9 @@ host-bait search) go through :class:`SimilaritySearch`, so a single
 """
 
 from __future__ import annotations
-
 import shlex
 import subprocess
-
 from Bio.Blast.Applications import NcbiblastxCommandline
-
 from eefinder import translation
 from eefinder.log import logger
 

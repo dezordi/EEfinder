@@ -6,38 +6,10 @@ perfectly good progress display, but it was being swallowed by
 ``capture_output=True``. This module fixes that and adds bars for the steps
 EEfinder itself performs.
 
-Two rules keep the output honest:
-
-* progress is shown **only on a terminal**. Piped into a file or a workflow
-  engine, the escape sequences that redraw a progress bar are noise, so the
-  behaviour falls back to what it was before (silent, output captured);
-* mirroring a subprocess's output does not stop EEfinder from reading it -- the
-  tail is still kept so a failure can be reported with the tool's own message.
-
 Set ``EEFINDER_NO_PROGRESS=1`` to turn the display off even on a terminal.
-
-A command is judged by **what it produced**, not by whether it exited: when a
-``success_check`` reports the expected artifact complete, the command is stopped
-and the run continues. The NCBI ``datasets`` client writes the archive, prints
-its validation bar and then keeps running; waiting for it froze the pipeline on a
-download that had actually finished.
-
-Every command is run with its **standard input closed**. This is not a detail:
-the NCBI ``datasets`` client finishes its download, prints its completed
-validation bar and then *never exits* if it inherits an open stdin -- which is
-exactly what happens in an interactive terminal. Measured on the same download,
-same machine: 3 seconds with stdin closed, indefinite with it open. Nothing here
-feeds a command through stdin, so closing it is free.
-
-The same machinery detects a **stalled** download. NCBI transfers sometimes hang
-with the connection open, which no exit status ever reports: the process simply
-never finishes. :func:`run_with_retries` watches two liveness signals -- new
-output from the tool, and growth of the file it is writing -- and when both stay
-quiet for ``stall_timeout`` seconds it kills the attempt and starts over.
 """
 
 from __future__ import annotations
-
 import codecs
 import os
 import queue
@@ -45,9 +17,7 @@ import subprocess
 import sys
 import threading
 import time
-
 import click
-
 from eefinder.log import logger
 
 #: Environment variable that suppresses every progress display.

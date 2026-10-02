@@ -22,14 +22,11 @@ to a ``tmp_outputs/`` directory so they remain available for inspection.
 """
 
 from __future__ import annotations
-
 import re
-
 import pandas as pd
 
 #: Accepted values for the ``--overlap`` option.
 OVERLAP_STRATEGIES = ("keep", "longest", "targets")
-
 _OVERLAPED_TAG = "overlaped"
 
 

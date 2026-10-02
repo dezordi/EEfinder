@@ -36,6 +36,27 @@ python accessory_scripts/bac_retriever.py -in <proteins.fa> -em <email> -key <ap
 Takes a three-column CSV and returns protein information grouped by viral
 family, for assembling family-scoped protein sets.
 
+### `update_ictv_table.py`
+
+Regenerates the bundled ICTV genome-composition table
+(`eefinder/data/ictv_genome_composition.tsv`), which supplies the
+`Molecule_type` column of the metadata CSV, from the current
+[ICTV Virus Metadata Resource](https://ictv.global/vmr). Reports what a new
+Master Species List release would change before overwriting anything, and flags
+the cases that silently empty `Molecule_type` — families that were renamed or
+retired. Needs no dependency beyond the standard library.
+
+```bash
+# report what would change, write nothing
+python accessory_scripts/update_ictv_table.py --dry-run
+
+# regenerate the bundled table
+python accessory_scripts/update_ictv_table.py
+```
+
+See [`eefinder/data/README.md`](https://github.com/WallauBioinfo/EEfinder/blob/master/eefinder/data/README.md)
+for the table's format and the review checklist.
+
 ## Post-processing elements
 
 ### `get_copies.py`

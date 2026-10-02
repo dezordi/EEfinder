@@ -11,11 +11,8 @@ callers that need one operation on its own.
 """
 
 from __future__ import annotations
-
 from pathlib import Path
-
 from Bio import SeqIO
-
 from eefinder.log import logger
 
 

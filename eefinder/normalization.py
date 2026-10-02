@@ -18,7 +18,6 @@ special-character removal, capitalisation, and the bare-``CDS``/``ORF`` ->
 """
 
 from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import Callable, Optional
