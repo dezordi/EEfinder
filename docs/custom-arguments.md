@@ -1,7 +1,7 @@
 # Custom arguments
 
 This page collects the tuning arguments that shape how EEfinder merges and
-filters elements, with the worked examples from the wiki.
+filters elements, with worked examples.
 
 ## Keeping temporary files
 
@@ -11,10 +11,10 @@ when overlap filtering removes elements, under `tmp_outputs/`. Pass
 
 ## Merging fragmented elements
 
-Endogenous viruses are ancestral integrations, and the endogenised regions
-accumulate deletions and insertions over time. As a result a single ancestral
-integration can survive as several fragments with slightly different — or
-truncated — taxonomic assignments. Two arguments let you merge such fragments.
+Endogenised regions can accumulate deletions and insertions over time, so a single
+ancestral integration can survive as several fragments with slightly different —
+or truncated — taxonomic assignments. Two arguments control how such fragments
+are merged back together.
 
 ### Merge length (`-lm` / `--limit`)
 
@@ -88,8 +88,8 @@ is applied and `-mp` has no effect.
 Names the prefix EEfinder uses for output files and element names. Sequence
 headers and GFF3 `ID`s are formatted as `PREFIX/CONTIG:START-END` (e.g.
 `Ae_aeg_Aag2_ctg_1913/ctg_1913:1754-2689`); the taxonomy table's `Element-ID`
-column carries the same name without the `PREFIX/` part. We suggest combining
-the genome and assembly names, e.g. **Ae_aeg_Aag2** for *Aedes aegypti* / Aag2.
+column carries the same name without the `PREFIX/` part. Combining the species
+and assembly names works well, e.g. **Ae_aeg_Aag2** for *Aedes aegypti* / Aag2.
 
 If `-pr` is omitted the prefix is derived from the input filename, up to the
 first dot.

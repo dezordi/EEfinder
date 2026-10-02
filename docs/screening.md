@@ -42,32 +42,41 @@ eefinder screening \
 
 ## Pipeline steps
 
-The `screening` command orchestrates these steps (each a small side-effect class;
-files flow through disk with accreting suffixes `.rn.fmt`, `.blastx`,
-`.filtred`, `.bed`, `.tax`, …):
+A run goes through the twelve stages below — the same ones `eefinder.log`
+records, in this order, with a timing for each. Every stage writes its result to
+disk before the next picks it up, so any of them can be inspected afterwards
+under `tmp_files/`.
 
-1. **PrepareGenome** — prefix every FASTA header (`>PREFIX/…`) **and** drop
-   contigs below `--length`, in a single pass writing only `{prefix}.rn.fmt`.
-   (`InsertPrefix` and `RemoveShortSequences` still exist as standalone classes;
-   chaining them wrote the genome to disk twice.)
-2. **MakeDB** — build BLAST or DIAMOND databases (`--index_databases`).
-3. **SimilaritySearch** — the similarity search, run **twice** (main EE search +
-   host-bait search). `--translation_method` controls both — see
+1. **Prepare input data** — prefix every FASTA header (`>PREFIX/…`) and drop
+   contigs shorter than `--length`.
+2. **Index databases** — build the BLAST or DIAMOND indexes for `-db` and `-bt`
+   (only with `--index_databases`).
+3. **Similarity search** — search the genome against `-db`, then collapse
+   redundant hits by query, coordinate range and strand (`--range_junction`).
+   `--translation_method` controls how the genome is translated — see
    [Translation methods](translation-methods.md).
-4. **FilterTable** — filter redundant hits by `qseqid`/range/sense.
-5. **GetFasta** — extract putative EE sequences (bedtools).
-6. **CompareResults** — drop EEs that hit host baits harder.
-7. **GetTaxonomy** — join hits to the metadata CSV, build the taxonomy table.
-   The metadata header is validated first (see
+4. **Extraction of putative EEs** — cut the surviving candidate regions out of
+   the genome.
+5. **Filter step** — search those candidates against the host baits `-bt` and
+   drop every candidate whose best bait hit outscores its best `-db` hit.
+6. **Get basic taxonomy** — join the surviving hits to the metadata CSV. Its
+   header is validated before the run starts (see
    [the required format](get-databases.md#the-metadata-csv-format)).
-8. **MergeBed** — merge truncated elements of the same genus/family
-   (`--merge_level`).
-9. **MaskClean** — optional soft-mask filter (`--clean_masked`).
-10. **TagElements** — flag overlapping elements, add `Average_pident`.
-11. **FilterOverlap** — resolve overlaps by the chosen strategy — see
-    [Overlap resolution](overlap.md).
-12. **WriteGFF3** — write the EE taxonomy table as a GFF3 annotation.
-13. **GetLength + BedFlank + GetFasta** — extract flanking regions (`--flank`).
+7. **Merge truncated elements** — join neighbouring fragments of the same taxon
+   and strand (`--limit`, `--merge_level`) and re-extract the merged sequences.
+8. **Clean EEs** — optional soft-mask filter (`--clean_masked`).
+9. **Create final taxonomy** — build one row per element, flag overlapping
+   elements and add `Average_pident`.
+10. **Filter overlapping elements** — resolve overlaps by the chosen strategy —
+    see [Overlap resolution](overlap.md).
+11. **Generate GFF3 annotation** — write the taxonomy table as GFF3.
+12. **Extract flanking regions** — `--flank` nt on each side of every element.
+
+```{note}
+The similarity search therefore runs **twice** — once for the genome against
+`-db` (stage 3) and once for the candidates against `-bt` (stage 5) — always
+with the same `--mode` and `--translation_method`.
+```
 
 (diamond-sensitivity)=
 ## The sensitivity trade-off

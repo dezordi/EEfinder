@@ -59,7 +59,7 @@ positives: a putative EE that matches a host gene with a higher bitscore than it
 matches the viral/bacterial reference is removed (see
 [Running the pipeline](screening.md)).
 
-We suggest the RefSeq proteins of the host species, or of the closest available
+Use the RefSeq proteins of the host species, or of the closest available
 relative. No metadata table is needed for this input — only the FASTA.
 `test_files/filter_subset.fa` shows the expected shape (RefSeq *Aedes
 albopictus* proteins used against an *Aedes aegypti* genome).
@@ -163,7 +163,7 @@ resolved anyway.
 
 ## Progress and interrupted downloads
 
-A whole-RefSeq download takes a long time, so `get-databases` now shows what it
+A whole-RefSeq download takes a long time, so `get-databases` reports what it
 is doing. The `datasets` CLI draws its own transfer progress
 (`Downloading: virus.zip  65.5kB 125kB/s`, then `Validating package files`) and
 EEfinder passes it straight through instead of swallowing it; the steps EEfinder
@@ -182,57 +182,33 @@ Progress is shown **only on a terminal**: piped into a file or a workflow engine
 the redraw sequences would be noise, so the output falls back to being captured
 silently. `EEFINDER_NO_PROGRESS=1` turns it off on a terminal too.
 
-```{note}
-External commands are run with their **standard input closed**. The NCBI
-`datasets` client otherwise finishes its download, prints its completed
-validation bar and never exits — the same download takes 3 seconds with stdin
-closed and hangs indefinitely with it open, which is what an interactive
-terminal provides.
-```
-
 ### Retries and stalled transfers
 
-NCBI downloads fail in two different ways, and both are handled:
+Large NCBI downloads fail intermittently, and `get-databases` handles the usual
+failure modes on its own: an error the tool reports, a corrupt archive (verified
+after every download), an HTTP/2 stream reset (retried over HTTP/1.1, which
+completes the same transfer), and a silent hang where the connection stays open
+and nothing more arrives.
 
-- **an error the tool reports** (`Internal error (invalid zip archive). Please
-  try again`) — retried;
-- **an HTTP/2 stream reset**
-  (`stream error: stream ID 3; INTERNAL_ERROR; received from peer`), which aborts
-  large transfers part-way through — the retry is then made over **HTTP/1.1**
-  (`GODEBUG=http2client=0`), which completes the same download. Repeating the
-  attempt unchanged would only fail the same way;
-- **a package that arrives broken**, sometimes with the tool still reporting
-  success (`118MB invalid zip archive`) — the archive is verified after every
-  download, and a bad one is retried. Any archive already at the destination is
-  discarded before the first attempt, so a stale file from an interrupted run is
-  never downloaded into;
-- **a hang it never reports**, where the connection stays open and nothing more
-  arrives — detected and retried. A transfer counts as stalled when *neither* new
-  output from `datasets` *nor* growth of the archive is seen for
-  `--stall-timeout` seconds (default 180), so a slow-but-working transfer is
-  never mistaken for a hung one. The attempt is killed and the partial archive
-  discarded before the next try.
+A transfer counts as **stalled** only when neither new output from `datasets`
+nor growth of the archive is seen for `--stall-timeout` seconds (default 180),
+so a slow-but-working transfer is never mistaken for a hung one. The attempt is
+then killed, the partial archive discarded, and the download retried — up to
+`--attempts` times (default 3) with a growing backoff.
 
-While nothing is happening, the wait is announced rather than silent:
+A long wait is announced rather than silent, so a slow transfer can be told
+apart from a dead one:
 
 ```
 INFO:eefinder:Still waiting on datasets: no output and no new data for 40s
 (giving up and retrying at 180s)
 ```
 
-so a slow transfer can be told apart from a dead one without guessing. If a run
-ever does appear stuck, `kill -USR1 <pid>` makes EEfinder print what every thread
-is doing, and `ps -o pid,stat,etime,command -p $(pgrep -f "datasets download")`
-shows whether the NCBI client itself is the one waiting.
+If a run ever does appear stuck, `kill -USR1 <pid>` makes EEfinder print what
+every thread is doing.
 
-A completed transfer is never mistaken for a hung one in the other direction
-either: the run ends when `datasets` exits, without waiting for its pipe to
-close, because a background process the tool leaves behind can hold that pipe
-open indefinitely.
-
-`--attempts` (default 3) bounds the retries, with a short growing backoff between
-them. Failures that are **permanent** — a misspelled taxon, an unknown flag — are
-not retried, since the next attempt would produce the same message:
+Failures that are **permanent** — a misspelled taxon, an unknown flag — are not
+retried, since the next attempt would produce the same message:
 
 ```
 $ eefinder get-databases virus -tx NotARealTaxon -od db/
@@ -279,9 +255,8 @@ into the database, which appear nowhere else:
 
 `Reason` also has a catch-all, `absent_from_final_database`: the table is
 reconciled against the finished FASTA, so a record that disappeared without any
-step reporting it is still accounted for. That is not hypothetical — `cd-hit`
-silently discards sequences of up to 10 residues (`-l`), which would otherwise be
-reported as kept while being absent from the database.
+step reporting it is still accounted for. It does happen — `cd-hit` silently
+discards sequences of up to 10 residues.
 
 ```
 Accession               Species           Protein_downloaded            Status   Reason                 Organism_release_date  Cluster
@@ -313,19 +288,16 @@ The `datasets` client implements the cutoff for genome downloads but its **virus
 subcommand offers only `--released-after`, so for viruses EEfinder applies it
 itself, using the release dates in the download's own `data_report.jsonl`.
 
-That filtering is per **organism**, not per genome record, and the reason is a
-real limitation rather than a shortcut: the protein FASTA carries no link back to
-the record a protein came from. Mapping proteins to records by the report's
-`proteinCount` was tested and does not hold — in *Peribunyaviridae* the totals
-match but the order does not, and in *Orthomyxoviridae* the totals themselves
-disagree (245 proteins against 229 declared).
+That filtering is per **organism**, not per genome record, because the protein
+FASTA carries no link back to the record a protein came from (mapping them by the
+report's `proteinCount` was tested and does not hold).
 
-So an organism is included when its **earliest** record predates the cutoff, i.e.
-when the virus already existed then. Segmented viruses can have segments released
-years apart (La Crosse virus: 2002 and 2023) — 7 of 149 organisms in
-*Peribunyaviridae*, 5 of 28 in *Orthomyxoviridae*. Those organisms are kept with
-all of their proteins. The alternative, dropping an organism because one segment
-came later, would erase viruses that demonstrably existed at the cutoff.
+So an organism is included when its **earliest** record predates the cutoff —
+i.e. when the virus already existed then — and all of its proteins come with it.
+This matters for segmented viruses, whose segments can be released years apart
+(La Crosse virus: 2002 and 2023). The alternative, dropping an organism because
+one segment came later, would erase viruses that demonstrably existed at the
+cutoff.
 
 Every excluded accession appears in `tracking.tsv` with
 `Reason = released_after_cutoff` and its `Organism_release_date`, so the cutoff
@@ -336,8 +308,8 @@ record in that case.
 ## The metadata CSV format
 
 `-mt` is the table that turns a protein accession into a taxonomic assignment.
-EEfinder reads it **by column position**, so it must have these seven columns,
-with a header row:
+It must have a header row with these seven columns, which EEfinder matches **by
+name**:
 
 ```text
 Accession,Species,Genus,Family,Molecule_type,Protein,Host
@@ -360,10 +332,9 @@ assembled:
 | Any of the seven missing | The run stops with an error naming the missing column(s). |
 
 ```{note}
-Column *names* are matched, so the header must spell them exactly as above —
-`Molecule_type`, not `Molecule type`. A file whose header is right but whose
-column order is not is handled for you; a file missing a column cannot be, which
-is why it is an error rather than a warning.
+The names must be spelled exactly as above — `Molecule_type`, not
+`Molecule type`. A wrong column *order* is fixed for you; a missing column
+cannot be, which is why it is an error rather than a warning.
 ```
 
 ## How the metadata CSV is built

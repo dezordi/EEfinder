@@ -2,14 +2,14 @@
 
 Two endogenous elements can occupy the same genomic region while being assigned
 to **different families** — for example when a locus matches proteins from more
-than one viral lineage. `TagElements` flags such elements in the
+than one viral lineage. EEfinder flags such elements in the taxonomy table's
 `tag` column (`overlaped`, versus `unique`), and `--overlap` (`-ov`) decides
 what to do with them.
 
 | Value | Behaviour |
 |-------|-----------|
 | `keep` (default) | Keep every element (no filtering). |
-| `longest` | Among overlaping elements, keep the longest and drop the shorter ones. |
+| `longest` | Among overlapping elements, keep the longest and drop the shorter ones. |
 | `targets` | Resolve each overlap cluster by a family list — a keep-list (`--target_families`) or a drop-list (`--non_target_families`). |
 
 ## `targets`: keep-list vs drop-list

@@ -2,9 +2,10 @@
 
 **EEfinder** is a Python CLI and package for the identification of **Endogenous
 Elements (EEs)** — sequences of non-host origin integrated into eukaryotic
-genomes, most commonly derived from viruses or bacteria. A single command takes
-a genome assembly and a reference protein database and returns the element
-sequences, their taxonomic assignment, and their genomic flanking regions.
+genomes, most commonly derived from viruses or bacteria. Its `screening`
+command takes a genome assembly and a reference protein database and returns the
+element sequences, their taxonomic assignment and their genomic flanking
+regions; `get-databases` builds those reference inputs from NCBI RefSeq.
 
 It was published in the *Computational and Structural Biotechnology Journal*
 (Dias, Dezordi & Wallau, 2024,
@@ -32,17 +33,16 @@ consequence of that.
   internal source of taxonomy. See
   [Acquiring databases](#databases-define-search).
 
-- **Translated, protein-level similarity search.** Protein-based searches are generally
-  more sensitive than nucleotide-based searches for detecting old viral or bacterial integrations,
-  so EEfinder searches the genome translated in all six reading frames against a reference
+- **Translated, protein-level similarity search.** Protein searches are more
+  sensitive than nucleotide searches for old integrations, so EEfinder searches
+  the genome translated in all six reading frames against a reference
   **protein** database. The search is parameterised for divergent sequences
-  (BLOSUM45 substitution matrix, word size 3, *E*-value ≤ 1e-5), and alignments
-  shorter than 33 aa are discarded. `blastx` is the default and the most
-  sensitive option. `diamond blastx` is available as a faster alternative, but
-  **recovers substantially fewer elements** — in the benchmark published with the tool,
-  its most sensitive setting found 225 elements against BLAST's 481 on the same genome, with the
-  loss concentrated on the most divergent sequences. See
-  [The sensitivity trade-off](#diamond-sensitivity).
+  (BLOSUM45, word size 3, *E*-value ≤ 1e-5) and alignments shorter than 33 aa
+  are discarded. `blastx` is the default and the most sensitive option;
+  `diamond blastx` is faster but **recovers substantially fewer elements** — in
+  the published benchmark its most sensitive setting found 225 elements against
+  BLAST's 481 on the same genome, with the loss concentrated on the most
+  divergent sequences. See [The sensitivity trade-off](#diamond-sensitivity).
 
 - **Host-gene bait filtering.** Reference viral and bacterial proteins share
   conserved domains with host proteins — reverse transcriptases, helicases,

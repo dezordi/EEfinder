@@ -21,7 +21,7 @@ micromamba activate EEfinder
 pip install -e .
 
 # test + lint tooling
-pip install -r requirements-dev.txt
+pip install ".[dev]"                    # or: pip install -r requirements-dev.txt
 ```
 
 `requirements-dev.txt` pins:
@@ -87,7 +87,9 @@ failed), so `pytest -m "not integration"` runs cleanly on a bare Python install.
 - **`test_progress.py`** / **`test_download_hang.py`** — the progress display,
   retry/backoff and stall detection, including the cases where `datasets`
   delivers a complete package but never exits.
-- **`test_utils.py`** — `check_outdir`, `step_info`, `running_info` helpers.
+- **`test_utils.py`** — the `-mt` header validation
+  (`check_metadata_columns`/`check_metadata_file`), `check_outdir`, and the
+  `StepInfo`/`RunArguments`/`RunInfo` run-log dataclasses.
 
 ### Integration tests
 
@@ -114,7 +116,7 @@ exhaustive parameter sweep — each test covers one behaviour worth protecting:
 - **`test_family_merge_level_runs_end_to_end`** — the `--merge_level family`
   branch runs and yields a valid taxonomy table.
 - **`test_overlap_longest_filters_and_preserves_removed`** — `--overlap longest`
-  drops overlaping elements from the final results while preserving them under
+  drops overlapping elements from the final results while preserving them under
   `tmp_outputs/`; kept and removed elements partition the unfiltered run.
 - **`test_overlap_targets_requires_exactly_one_family_list`** — `--overlap
   targets` with neither (or both) of `--target_families` / `--non_target_families`

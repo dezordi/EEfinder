@@ -6,14 +6,13 @@ with `blastx` / `diamond blastx`. `--translation_method` (`-tm`) swaps this for
 `diamond blastp`.
 
 The chosen method applies to **both** searches in a run — the main EE search and
-the host-bait search — because a single value is threaded into the
-`SimilaritySearch` step. They therefore can never diverge.
+the host-bait search — so the two can never diverge.
 
 ## Methods
 
 | Value | Behaviour |
 |-------|-----------|
-| `default` | Six-frame `blastx` / `diamond blastx` (current behaviour). |
+| `default` | Six-frame `blastx` / `diamond blastx`. |
 | `gv` | Predict proteins with [pyrodigal-gv](https://github.com/althonos/pyrodigal-gv), align with `blastp` / `diamond blastp`. |
 | `rv` | Predict proteins with [pyrodigal-rv](https://github.com/LanderDC/pyrodigal-rv), align with `blastp` / `diamond blastp`. |
 | `gv-rv` | Run **both** predictors, drop redundancy with `cd-hit` (100% identity / 100% coverage), then align. |
@@ -39,24 +38,17 @@ flowchart LR
     H --> I["{query}.blastx<br/>same schema as blastx"]
 ```
 
-Prediction (in `eefinder/translation.py`) writes, alongside the
-predicted-protein FASTA, a **coordinates TSV**
-(`protein_id, contig, start, end, strand, tool`). After the protein-vs-protein
-search, a **coordinate traceback** maps each hit's amino-acid span back to
-nucleotide coordinates on the source contig, following the `blastx` convention
-(`qstart < qend` on the plus strand, `qstart > qend` on the minus strand).
+Alongside the predicted-protein FASTA, prediction writes a **coordinates TSV**
+that records where each protein came from on the contig. After the
+protein-vs-protein search, a **coordinate traceback** maps every hit's
+amino-acid span back to nucleotide coordinates, following the `blastx`
+convention (`qstart < qend` on the plus strand, `qstart > qend` on the minus
+strand).
 
-Because the traceback emits the exact schema `blastx` would have produced,
-`SimilaritySearch` always writes the same `{query}.blastx` table and **every
-downstream step (filter / bed / taxonomy / GFF3) is unchanged** regardless of the
-chosen method. The final Element-IDs are nucleotide coordinates in all modes.
-
-```{note}
-`gv-rv` uses `cd-hit` to drop proteins predicted identically by both tools.
-Identical sequences have identical coordinates, so the coordinates TSV keeps
-every `gv`+`rv` entry and the cluster representative id still resolves during
-traceback.
-```
+The practical consequence: the search table has the same format in every mode,
+so all the downstream steps and all the output files are identical in shape, and
+Element-IDs are always nucleotide coordinates. Only *which* proteins were
+searched changes.
 
 ## Dependencies
 

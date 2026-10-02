@@ -83,8 +83,9 @@ adds a view rather than replacing one.
 
 - `eefinder_version` — the installed EEfinder version;
 - `arguments` — the resolved run arguments (including `translation_method`);
-- `dependencies` — detected versions of bedtools, BLAST, DIAMOND, python, numpy
-  and pandas, each flagged if it differs from the `env.yml` pin;
+- `dependencies` — detected versions of bedtools, BLAST, DIAMOND, the NCBI
+  `datasets` CLI, python, numpy and pandas, each flagged if it differs from the
+  `env.yml` pin;
 - per-step and total timing information.
 
 ```{tip}
@@ -96,8 +97,7 @@ check at the reference file with `export EEFINDER_ENV_YML=/path/to/env.yml`.
 
 Unless `--removetmp` is given, the intermediates are archived under `tmp_files/`.
 Their names accrete suffixes as they pass through the pipeline, so you can trace
-exactly which step produced each file. The prefixing and length filtering happen
-in one pass, so there is a single `PREFIX.rn.fmt` and no intermediate `PREFIX.rn`:
+exactly which step produced each file:
 
 ```text
 outdir/
@@ -121,4 +121,4 @@ With the prediction-based translation methods (`gv`/`rv`/`gv-rv`), the
 predicted-protein coordinates TSVs also appear here (e.g.
 `PREFIX.rn.fmt.pred.coords.tsv` for the main search and
 `PREFIX.rn.fmt.blastx.filtred.bed.fasta.pred.coords.tsv` for the host-bait
-search) — evidence that the translation method was applied to both searches.
+search).

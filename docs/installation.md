@@ -28,9 +28,9 @@ Python interpreter.
 (install-from-bioconda)=
 ## Install from Bioconda
 
-The [Bioconda package](https://anaconda.org/bioconda/eefinder) is the shortest
-route: it declares the external binaries as dependencies, so one command
-installs EEfinder *and* the tools it drives.
+The [Bioconda package](https://anaconda.org/bioconda/eefinder) is the
+recommended route: it declares the external binaries as dependencies, so one
+command installs EEfinder *and* the tools it drives.
 
 ```bash
 conda create -n EEfinder -c conda-forge -c bioconda eefinder
@@ -159,11 +159,11 @@ conda activate EEfinder
 pip install eefinder
 ```
 
-This is the quickest route, but it resolves the binaries to whatever versions
-are current. To get the versions EEfinder is tested against, install from source
-with `env.yml` as below.
+This route resolves the binaries to whatever versions are current. To get the
+exact versions EEfinder is tested against, install from source with `env.yml` as
+below.
 
-## Install from source (recommended)
+## Install from source
 
 ```bash
 git clone https://github.com/WallauBioinfo/EEfinder.git
@@ -198,7 +198,7 @@ To run the test suite and format the code, add the development dependencies:
 
 ```bash
 pip install ".[dev]"                  # pytest + black
-# or, equivalently:
+# or, with the exact versions CI uses:
 pip install -r requirements-dev.txt
 ```
 
