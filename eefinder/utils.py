@@ -231,6 +231,7 @@ class DownloadArguments:
     #: Taxa left out of the download entirely (never requested from NCBI).
     exclude_taxa: str = ""
     split_level: str = ""
+    threads: int = 1
 
 
 @dataclass

@@ -84,6 +84,14 @@ def _common_download_options(func):
         default=True,
     )(func)
     func = click.option(
+        "-p",
+        "--threads",
+        help="Threads for cd-hit when collapsing duplicate proteins. The "
+        "download itself is network-bound and is unaffected. default = 1",
+        type=int,
+        default=1,
+    )(func)
+    func = click.option(
         "-pr",
         "--prefix",
         help="Basename for the output files, default = the dataset type "
@@ -130,6 +138,7 @@ def _run_get_databases(
     released_before=None,
     exclude_taxa=(),
     split_level=NO_SPLIT,
+    threads=1,
 ):
     """Check for the datasets binary and run :class:`GetDatabases`."""
     if debug:
@@ -141,7 +150,8 @@ def _run_get_databases(
         f"standardize_proteins={standardize_proteins} cluster={cluster} "
         f"attempts={attempts} stall_timeout={stall_timeout} "
         f"keep_download={keep_download} released_before={released_before!r} "
-        f"exclude_taxa={exclude_taxa!r} split_level={split_level!r}"
+        f"exclude_taxa={exclude_taxa!r} split_level={split_level!r} "
+        f"threads={threads}"
     )
     if shutil.which(DATASETS_BINARY) is None:
         click.secho(
@@ -175,6 +185,7 @@ def _run_get_databases(
             released_before=released_before,
             exclude_taxa=exclude_taxa,
             split_level=split_level,
+            threads=threads,
         )
     except Exception as err:
         click.secho(f"Failed to download databases: {err}", err=True, fg="red")
@@ -229,6 +240,7 @@ def get_databases_virus(
     split_level,
     outdir,
     prefix,
+    threads,
     cluster,
     refseq,
     attempts,
@@ -247,6 +259,7 @@ def get_databases_virus(
         taxon=taxon or DEFAULT_TAXA["virus"],
         outdir=outdir,
         prefix=prefix,
+        threads=threads,
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=standardize_proteins,
@@ -299,6 +312,7 @@ def get_databases_bacteria(
     split_level,
     outdir,
     prefix,
+    threads,
     cluster,
     refseq,
     attempts,
@@ -317,6 +331,7 @@ def get_databases_bacteria(
         taxon=taxon or DEFAULT_TAXA["bacteria"],
         outdir=outdir,
         prefix=prefix,
+        threads=threads,
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=standardize_proteins,
@@ -350,6 +365,7 @@ def get_databases_bacteria(
 def get_databases_host(
     outdir,
     prefix,
+    threads,
     cluster,
     refseq,
     attempts,
@@ -367,6 +383,7 @@ def get_databases_host(
         taxon=taxon,
         outdir=outdir,
         prefix=prefix,
+        threads=threads,
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=False,

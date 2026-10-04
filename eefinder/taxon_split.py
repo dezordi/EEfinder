@@ -5,10 +5,11 @@ transfer that fails and hangs. Asking for one family -- or one genus -- at a
 time keeps each request small, and the packages are concatenated before the
 database is built.
 
-Records whose lineage has no taxon at the chosen rank cannot be reached this
-way. They are reported as :class:`SkippedTaxon` rather than downloaded: without
-a family there is no ``Family``/``Genus`` to assign and no ``Molecule_type`` to
-look up, so the elements they would produce carry no taxonomy.
+Two kinds of taxon are reported as :class:`SkippedTaxon` instead of being
+downloaded: those whose lineage has no taxon at the chosen rank (without a
+family there is no ``Family``/``Genus`` to assign and no ``Molecule_type`` to
+look up, so the elements they would produce carry no taxonomy), and those NCBI
+holds no records for.
 """
 
 from __future__ import annotations
@@ -213,8 +214,30 @@ def plan_split(
         )
         return SplitPlan(level=level, root=node, taxa=(node,), skipped=())
 
+    # Taxa NCBI holds nothing for still exist in the taxonomy (ICTV recognises
+    # the family, no sequence has been deposited). Requesting them costs a round
+    # trip and yields a package with no protein.faa. They stay in ``covered``,
+    # so the walk below stops at them instead of reporting them a second
+    # time as unreachable.
+    empty = {
+        tax_id: node_ for tax_id, node_ in covered.items() if node_.assembly_count == 0
+    }
+    if empty and len(empty) == len(covered):
+        # Every count came back zero: assume the field is missing rather than
+        # that the whole taxon is empty, and request them anyway.
+        logger.debug(
+            f"no assembly counts available for the {level} taxa; requesting all"
+        )
+        empty = {}
+    elif empty:
+        logger.info(
+            f"{len(empty)} {level} taxa have no records in NCBI and are not "
+            "requested"
+        )
+
     logger.info(
-        f"{node.name} covers {len(covered)} {level} taxa; downloading one at a time"
+        f"{node.name} covers {len(covered) - len(empty)} {level} taxa with "
+        "records; downloading one at a time"
     )
     taxonomy = _Taxonomy(datasets_bin)
     taxonomy.prime({node.tax_id: node})
@@ -230,6 +253,15 @@ def plan_split(
             reason=f"no {level} in its lineage",
         )
         for entry in (taxonomy.node(tax_id) for tax_id in uncovered)
+    ) + tuple(
+        SkippedTaxon(
+            tax_id=entry.tax_id,
+            name=entry.name,
+            rank=entry.rank,
+            assembly_count=0,
+            reason="no records in NCBI",
+        )
+        for entry in sorted(empty.values(), key=lambda n: n.tax_id)
     )
-    taxa = tuple(covered[tax_id] for tax_id in sorted(covered))
+    taxa = tuple(covered[tax_id] for tax_id in sorted(covered) if tax_id not in empty)
     return SplitPlan(level=level, root=node, taxa=taxa, skipped=skipped)

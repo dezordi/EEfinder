@@ -1006,6 +1006,14 @@ class GetDatabases:
             release_dates=release_dates,
         )
         excluded_uninformative = counts.total - counts.written
+        if counts.files < len(zip_paths):
+            # A package with no protein.faa contributes nothing, so the merged
+            # count is below the number downloaded. Say so: the difference is
+            # otherwise invisible and looks like data loss.
+            logger.info(
+                f"{len(zip_paths) - counts.files} of {len(zip_paths)} package(s) "
+                "held no protein.faa and contributed nothing"
+            )
         merged = f"{counts.files} protein.faa file(s) merged"
         if exclude:
             merged += "; dropped hypothetical/uncharacterized proteins"
@@ -1197,6 +1205,7 @@ class GetDatabases:
                 released_before=self.released_before or "",
                 exclude_taxa=", ".join(self.exclude_taxa),
                 split_level=self.split_level,
+                threads=self.threads,
             ),
             sequence_counts=self.sequence_counts,
             start_time=start_time,

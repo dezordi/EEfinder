@@ -84,6 +84,7 @@ eefinder get-databases host -tx "Aedes aegypti" -od db/ -pr host
 | `-tx/--taxon` | NCBI taxon name or tax id (e.g. `Flaviviridae`, `10239`). |
 | `-od/--outdir` | Output directory. |
 | `-pr/--prefix` | Output basename (default: the dataset type → `virus.fa` / `virus.csv`). |
+| `-p/--threads` | Threads for the `cd-hit` deduplication (default 1). The download itself is network-bound and unaffected. |
 | `--refseq/--all-sequences` | Restrict to RefSeq (default) or fetch everything. |
 | `--exclude-taxon` | Leave a branch of the taxonomy out of the download entirely; repeatable. Defaults to SARS-CoV-2 for `virus`. See [Excluding a virus from the download](#excluding-a-virus-from-the-download). |
 | `--split-level` | Split the download into one request per `family` (default) or `genus`, instead of one request for the whole taxon. `none` restores the single request. Subtrees with no taxon at that rank are skipped and logged. Not on `host`. |
@@ -229,6 +230,13 @@ taxonomy. Every skipped subtree is listed in `{prefix}.log` under
     }
 ]
 ```
+
+A taxon NCBI holds no records for is not requested either: 47 of the 427 viral
+families are recognised by the ICTV but have nothing deposited, so asking for
+them costs a round trip and yields a package with no `protein.faa`. They are
+listed with `"reason": "no records in NCBI"`, which is why a whole-virus build
+reports **380 packages merged, not 427**. The run also says how many packages
+held no proteins, so the difference is never silent.
 
 `--split-level` composes with `--exclude-taxon`: the split is planned first, and
 an excluded branch is pruned out of whichever split taxon contains it.

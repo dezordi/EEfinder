@@ -1257,3 +1257,49 @@ class TestFindDataReports:
 
     def test_empty_when_there_is_none(self, tmp_path):
         assert find_data_reports(str(tmp_path)) == []
+
+
+def test_cli_threads_default_to_one(tmp_path, monkeypatch):
+    """cd-hit runs single-threaded unless -p is given."""
+    captured = {}
+
+    def fake_get_databases(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.shutil.which", lambda name: "/usr/bin/datasets"
+    )
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.GetDatabases", fake_get_databases
+    )
+
+    result = CliRunner().invoke(
+        cli, ["get-databases", "virus", "-od", str(tmp_path / "out")]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["threads"] == 1
+
+
+@pytest.mark.parametrize("dataset", ["virus", "bacteria", "host"])
+def test_cli_threads_reach_get_databases(tmp_path, monkeypatch, dataset):
+    """-p is accepted by every subcommand and forwarded for cd-hit."""
+    captured = {}
+
+    def fake_get_databases(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.shutil.which", lambda name: "/usr/bin/datasets"
+    )
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.GetDatabases", fake_get_databases
+    )
+
+    args = ["get-databases", dataset, "-od", str(tmp_path / "out"), "-p", "8"]
+    if dataset == "host":
+        args += ["-tx", "7159"]
+    result = CliRunner().invoke(cli, args)
+
+    assert result.exit_code == 0, result.output
+    assert captured["threads"] == 8

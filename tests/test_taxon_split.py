@@ -20,7 +20,12 @@ TREE = {
         "parents": [],
         "children": [10, 20, 30],
     },
-    10: {"name": "OrderA", "rank": "order", "parents": [1], "children": [100, 200]},
+    10: {
+        "name": "OrderA",
+        "rank": "order",
+        "parents": [1],
+        "children": [100, 200, 300],
+    },
     100: {
         "name": "FamA",
         "rank": "family",
@@ -39,6 +44,8 @@ TREE = {
     20: {"name": "OrderB", "rank": "order", "parents": [1], "children": [201]},
     201: {"name": "UnclassB", "rank": "", "parents": [1, 20], "children": [], "asm": 5},
     30: {"name": "FamC", "rank": "family", "parents": [1], "children": [], "asm": 11},
+    # Recognised family, nothing deposited: no assemblies.
+    300: {"name": "FamEmpty", "rank": "family", "parents": [1, 10], "children": []},
 }
 BY_NAME = {node["name"].lower(): tax_id for tax_id, node in TREE.items()}
 
@@ -102,7 +109,7 @@ def test_taxa_at_rank_lists_only_that_rank(monkeypatch):
 
     found = taxa_at_rank("1", "family")
 
-    assert set(found) == {100, 200, 30}
+    assert set(found) == {100, 200, 30, 300}
     assert all(node.rank == "family" for node in found.values())
 
 
@@ -119,6 +126,7 @@ def test_plan_splits_a_broad_taxon_into_families(monkeypatch):
 
     assert plan.level == "family"
     assert plan.split
+    # FamEmpty (300) has no records and is not requested.
     assert [node.tax_id for node in plan.taxa] == [30, 100, 200]
 
 
@@ -127,9 +135,10 @@ def test_plan_reports_subtrees_with_no_family(monkeypatch):
 
     plan = plan_split("1", "family")
 
-    assert [entry.tax_id for entry in plan.skipped] == [20]
-    assert plan.skipped[0].reason == "no family in its lineage"
-    assert plan.skipped[0].assembly_count == 0
+    by_reason = {}
+    for entry in plan.skipped:
+        by_reason.setdefault(entry.reason, []).append(entry.tax_id)
+    assert by_reason["no family in its lineage"] == [20]
 
 
 def test_skipped_assemblies_sums_the_subtrees(monkeypatch):
@@ -199,3 +208,51 @@ def test_skipped_taxon_fields():
     )
 
     assert entry.tax_id == 1 and entry.reason == "why"
+
+
+def test_a_family_with_no_records_is_not_requested(monkeypatch):
+    _fake_datasets(monkeypatch)
+
+    plan = plan_split("1", "family")
+
+    assert 300 not in [node.tax_id for node in plan.taxa]
+
+
+def test_a_family_with_no_records_is_reported(monkeypatch):
+    _fake_datasets(monkeypatch)
+
+    plan = plan_split("1", "family")
+
+    empty = [e for e in plan.skipped if e.reason == "no records in NCBI"]
+    assert [e.tax_id for e in empty] == [300]
+    assert empty[0].assembly_count == 0
+
+
+def test_skipping_empty_taxa_does_not_inflate_the_skipped_assemblies(monkeypatch):
+    _fake_datasets(monkeypatch)
+
+    plan = plan_split("1", "family")
+
+    # Nothing is reported as lost that NCBI does not hold.
+    assert plan.skipped_assemblies == sum(
+        e.assembly_count for e in plan.skipped if e.reason != "no records in NCBI"
+    )
+
+
+def test_all_counts_zero_requests_everything(monkeypatch):
+    """A missing count field must not look like an empty taxonomy."""
+    stripped = {
+        tax_id: {k: v for k, v in node.items() if k != "asm"}
+        for tax_id, node in TREE.items()
+    }
+    monkeypatch.setattr(taxon_split, "TREE", stripped, raising=False)
+    original = dict(TREE)
+    TREE.clear()
+    TREE.update(stripped)
+    try:
+        _fake_datasets(monkeypatch)
+        plan = plan_split("1", "family")
+        assert [node.tax_id for node in plan.taxa] == [30, 100, 200, 300]
+    finally:
+        TREE.clear()
+        TREE.update(original)
