@@ -17,6 +17,13 @@ Each feature is documented in full on
 what changed, not how each option works.
 
 ### Added
+- **`screening` is a command group of nine subcommands**, one per pipeline
+  stage plus `all`: `prepare`, `clean`, `align`, `filter`, `taxonomy`, `merge`,
+  `postprocess`, `flanks`. A stage takes explicit inputs and defaults them to
+  the canonical paths of its `-od`/`-pr`, so a pipeline can be driven step by
+  step, resumed, or split across jobs. `eefinder screening <options>` runs
+  the whole pipeline. Running `all` and running the eight stages in sequence produce
+  byte-identical results.
 - **`get-databases`, a command that builds the reference inputs** (`-db`, `-mt`,
   `-bt`) from NCBI RefSeq via the `datasets` CLI, replacing the manual downloads
   through the NCBI Virus web UI. One subcommand per database (`virus`,
@@ -57,8 +64,7 @@ what changed, not how each option works.
 - **An auditable run log.** `eefinder.log` records the resolved arguments, the
   parameters used at each step, per-step timing, and the detected versions of
   every dependency flagged against the `env.yml` pins, with a startup warning on
-  drift. `--debug` adds verbose tracing, and `kill -USR1 <pid>` dumps a traceback
-  of every thread so a run that appears stuck can be diagnosed.
+  drift. `--debug` adds verbose tracing.
 - **A `pytest` suite and CI.** Unit tests for every data-processing step (no
   external binaries needed) plus scenario-driven end-to-end runs against
   `test_files/`, including byte-for-byte golden comparisons of the main outputs.
@@ -106,6 +112,11 @@ what changed, not how each option works.
   `screening` subcommand of the group. **(Breaking.)**
 
 ### Fixed
+- **A protein with no metadata row reached the output with empty taxonomy.**
+  The join is a left join, so `-db` entries absent from `-mt` were not an error
+  -- they produced rows with blank `Family`/`Genus`/`Species`. `prepare` now
+  checks **every** accession before the search and fails naming the ones that
+  are missing.
 - **`--clean_masked` produced an empty cleaned taxonomy table.** The cleaned
   FASTA record IDs keep the `PREFIX/` that the taxonomy table's `Element-ID`
   drops, so the id comparison never matched and `*.EEs.cleaned.tax.tsv` came out

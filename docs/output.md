@@ -3,6 +3,10 @@
 A `screening` run writes its main results directly into `--outdir`, plus a JSON
 run log and (unless `--removetmp`) an archive of intermediates.
 
+A single stage (`eefinder screening align`, …) writes only its own outputs,
+under the stage names listed below; the `PREFIX.EEs.*` names and the archive are
+produced by `all`.
+
 ## Main outputs
 
 | File | Contents |
@@ -96,8 +100,10 @@ check at the reference file with `export EEFINDER_ENV_YML=/path/to/env.yml`.
 ## Intermediate files (`tmp_files/`)
 
 Unless `--removetmp` is given, the intermediates are archived under `tmp_files/`.
-Their names accrete suffixes as they pass through the pipeline, so you can trace
-exactly which step produced each file:
+They are named after the stage that produced them, so the file a stage reads
+and the file it writes are both obvious. `ScreeningPaths` in
+[the Python API](api.md#file-names) is the single source of truth for these
+names.
 
 ```text
 outdir/
@@ -107,18 +113,24 @@ outdir/
 ├── PREFIX.EEs.gff3
 ├── PREFIX.EEs.flanks.fa
 └── tmp_files/
-    ├── PREFIX.rn.fmt                 # prefixed headers + length-filtered
-    ├── PREFIX.rn.fmt.blastx          # similarity search (main)
-    ├── PREFIX.rn.fmt.blastx.filtred  # redundant-hit filter
-    ├── PREFIX.rn.fmt.blastx.filtred.bed
-    ├── PREFIX.rn.fmt.blastx.filtred.bed.fasta          # putative EEs
-    ├── PREFIX.rn.fmt.blastx.filtred.bed.fasta.blastx   # host-bait search
-    ├── ...
-    └── PREFIX.rn.fmt.blastx.filtred.bed.fasta.blastx.filtred.concat.nr.tax.bed.merge...
+    ├── PREFIX.cleaned_genome.fa          # prefixed headers + length-filtered
+    ├── PREFIX.cleaned_genome.lengths.tsv
+    ├── PREFIX.ee_hits.tsv                # similarity search (main)
+    ├── PREFIX.ee_hits.filtered.tsv       # redundant-hit filter
+    ├── PREFIX.ee_candidates.bed
+    ├── PREFIX.ee_candidates.fa           # putative EEs
+    ├── PREFIX.host_hits.tsv              # host-bait search
+    ├── PREFIX.host_hits.filtered.tsv
+    ├── PREFIX.ee_hits.validated.tsv      # survived the bait comparison
+    ├── PREFIX.taxonomy_signature.csv
+    ├── PREFIX.merge.annotated.bed
+    ├── PREFIX.merge.merged.bed
+    ├── PREFIX.merge.elements.bed
+    ├── PREFIX.flanks.bed
+    └── PREFIX.flanks.slop.bed
 ```
 
 With the prediction-based translation methods (`gv`/`rv`/`gv-rv`), the
-predicted-protein coordinates TSVs also appear here (e.g.
-`PREFIX.rn.fmt.pred.coords.tsv` for the main search and
-`PREFIX.rn.fmt.blastx.filtred.bed.fasta.pred.coords.tsv` for the host-bait
-search).
+predicted-protein FASTAs and coordinate TSVs also appear here, named after the
+query each search used — `PREFIX.cleaned_genome.fa.pred.coords.tsv` for the main
+search and `PREFIX.ee_candidates.fa.pred.coords.tsv` for the host-bait one.

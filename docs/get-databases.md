@@ -204,9 +204,6 @@ INFO:eefinder:Still waiting on datasets: no output and no new data for 40s
 (giving up and retrying at 180s)
 ```
 
-If a run ever does appear stuck, `kill -USR1 <pid>` makes EEfinder print what
-every thread is doing.
-
 Failures that are **permanent** — a misspelled taxon, an unknown flag — are not
 retried, since the next attempt would produce the same message:
 
@@ -320,6 +317,12 @@ YP_009665181.1,Chick syncytial virus,Gammaretrovirus,Retroviridae,ssRNA-RT,polym
 The `Accession` values must match the first token of the corresponding FASTA
 headers in `-db` (e.g. `>YP_009664712.1 N protein [Bas-Congo tibrovirus]`).
 `test_files/virus_subset.csv` is a working miniature example.
+
+**Every protein in `-db` must have a row in `-mt`.** The run stops before the
+search if any does not, naming the offending accessions: the taxonomy join is a
+left join, so an undescribed protein would otherwise reach the output with empty
+`Family`/`Genus`/`Species`. Extra metadata rows are fine -- a database may be a
+subset of the table that describes it.
 
 The header is checked before the analysis starts, and again when the taxonomy is
 assembled:

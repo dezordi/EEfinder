@@ -15,18 +15,52 @@ Wiki: https://github.com/WallauBioinfo/EEfinder/wiki
 ## Architecture
 
 The package lives in `eefinder/` (flat layout, no `src/`). Each processing step
-is a small class whose `__init__` runs the work as a side effect (files in,
-files out) — there is no shared in-memory pipeline object; steps communicate
-through files on disk whose names accrete suffixes (`.rn.fmt`, `.blastx`,
-`.filtred`, `.bed`, `.tax`, ...).
+is organised at **two levels**:
 
-The CLI (`eefinder/scripts/main.py`) is a `click` **group** (`cli`, the console
-entry point) with two commands:
+- **Steps** (package root: `prepare_data.py`, `filter_table.py`, `bed.py`, ...)
+  are small classes whose `__init__` runs the work as a side effect (files in,
+  files out) and return nothing. Each names its output by appending a suffix to
+  its input (`.filtred`, `.merge`, `.fmt`, ...). They are the implementation.
+- **Stages** (`eefinder/stages/`) are the public layer: one class per pipeline
+  stage, taking explicit input paths, running on `.run()`, and returning a
+  dataclass naming every file produced. `eefinder/stages/paths.py`
+  (`ScreeningPaths`) is the single source of truth for every file name — stages
+  rename each step's suffixed output to the canonical name, so the stage
+  interface does not depend on step naming. **New code composes stages.**
 
-- **`screening`** — the EE-finding pipeline (everything below); the `screening`
-  function was formerly the single top-level command.
-- **`get-databases`** — a `click` **group** that downloads the RefSeq protein
-  databases (`get_databases.py` `GetDatabases`) via the NCBI `datasets` CLI. It
+`models.py` holds the output schemas (`HIT_TABLE`, `FILTERED_HIT_TABLE`,
+`ELEMENT_TABLE`, ...). A stage declares `models = {output_attr: model}` and
+`Stage.run` validates each one after `_execute`, so a stage enforces its
+guarantees rather than documenting them.
+
+`search_methods.py` makes hit production pluggable: a `SearchMethod` writes a
+table satisfying `HIT_TABLE`, and `SearchMethod.run` checks it.
+`resolve_search_method(mode, translation_method)` maps the two CLI options onto
+the registry (`blastx`, `diamond`, `predicted`); `SequenceAlignment` and
+`PutativeElementsFilter` accept a `search_method=` override. Adding a method
+means subclassing, registering, and satisfying `HIT_TABLE` — nothing downstream
+changes.
+
+The CLI entry point is the `cli` group in `eefinder/scripts/main.py`, which
+holds only the group itself and registers the two command groups — each in its
+own module under `eefinder/scripts/`:
+
+- **`screening`** (`eefinder/scripts/screening.py`) — a `click` **group** of
+  nine subcommands, one per stage plus `all`. It uses a `DefaultGroup` subclass
+  whose `parse_args` prepends `all` when the first argument is not a
+  subcommand, so `eefinder screening <options>` keeps working. The subcommands
+  are `prepare`, `clean`, `align`, `filter`, `taxonomy`, `merge`,
+  `postprocess`, `flanks`, `all`; options are shared through the
+  `_outdir_options`/`_database_options`/`_search_options`/
+  `_postprocess_options`/`_common_options` decorators. A single stage defaults
+  its file inputs to the `ScreeningPaths` names for `-od`/`-pr`. Only `all`
+  renames results to `PREFIX.EEs.*`, archives intermediates and writes
+  `eefinder.log`. Every subcommand takes `--versions-yml`/`--versions-key`
+  (`versions.write_versions_yml`) and `--debug`.
+- **`get-databases`** (`eefinder/scripts/get_databases.py`) — a `click`
+  **group** that downloads the RefSeq protein databases (the implementation is
+  `eefinder/get_databases.py` `GetDatabases`; note the two modules share a name
+  in different packages) via the NCBI `datasets` CLI. It
   has one subcommand per database, each with group-specific defaults/options:
   `virus` (taxon default `10239`, `--exclude-uninformative` +
   `--standardize-proteins`) and `bacteria` (taxon default `2`,
@@ -34,7 +68,8 @@ entry point) with two commands:
   no name map) produce a protein FASTA + metadata CSV (the
   `-db`/`-mt` inputs); `host` (taxon **required**) produces the `-bt` baits
   FASTA. The shared `-od`/`-pr`/`--refseq` options come from the
-  `_common_download_options` decorator in `main.py`; `_run_get_databases` does
+  `_common_download_options` decorator in `scripts/get_databases.py`;
+  `_run_get_databases` does
   the `datasets`-binary check and calls `GetDatabases`. The metadata CSV is
   rebuilt from the `protein.faa` headers (Accession/Protein/Species) joined with
   the `data_report.jsonl` taxonomy (Genus/Family/Molecule_type/Host). Protein
@@ -54,41 +89,6 @@ entry point) with two commands:
   `find_data_reports`). Records attached directly to a rank on the path are
   unreachable this way (measured: 0.005%).
 
-The `screening` command orchestrates the steps in this order:
-
-1. **prepare_data.py** `PrepareGenome` — prefix every FASTA header (`>PREFIX/…`)
-   **and** drop contigs below `--length` in a single pass, writing only
-   `{prefix}.rn.fmt`. (`InsertPrefix`/`clean_data.RemoveShortSequences` still
-   exist for standalone use; chaining them wrote the genome to disk twice.)
-2. **make_database.py** `MakeDB` — build BLAST or DIAMOND DBs (`--index_databases`).
-3. **similarity_analysis.py** `SimilaritySearch` — the similarity search, run
-   **twice** (main EE search + host-bait search). `--translation_method`
-   controls both: `default` = six-frame `blastx`/`diamond blastx`; `gv`/`rv`/
-   `gv-rv` predict proteins (**translation.py**, pyrodigal-gv/-rv, + `cd-hit`
-   dedup for `gv-rv`), align with `blastp`/`diamond blastp`, then trace the
-   amino-acid coordinates back to contig nucleotides (via a per-protein coords
-   TSV) so `SimilaritySearch` always emits the same `{query}.blastx` schema. The
-   single `translation_method` value is threaded to both searches, so they never
-   diverge.
-5. **filter_table.py** `FilterTable` — filter redundant hits by `qseqid`/range/sense.
-6. **bed.py** `GetFasta` — extract putative EE sequences (bedtools).
-7. **compare_results.py** `CompareResults` — drop EEs that hit host baits harder.
-8. **get_taxonomy.py** `GetTaxonomy` / `GetFinalTaxonomy` / `GetCleanedTaxonomy`
-   — join hits to the metadata CSV and build the taxonomy table.
-9. **bed.py** `GetAnnotBed` / `MergeBed` / `RemoveAnnotation` — merge truncated
-   elements of the same genus/family (`--merge_level`).
-10. **clean_data.py** `MaskClean` — optional soft-mask filter (`--clean_masked`).
-11. **tag_elements.py** `TagElements` — flag overlapping elements, add
-    `Average_pident`.
-12. **overlap.py** `FilterOverlap` — unless `--overlap keep` (the default),
-    filter elements tagged `overlaped` by the chosen strategy: `longest` (keep
-    the longest of each cluster) or `targets` with **exactly one** of a keep-list
-    (`--target_families`) or a drop-list (`--non_target_families`), resolved
-    per overlap cluster. Removed elements are preserved under `tmp_outputs/`.
-    Runs before the GFF3/flanking steps so they see the filtered results.
-13. **gff.py** `WriteGFF3` — write the EE taxonomy table as a GFF3 annotation.
-14. **get_length.py** `GetLength` + **bed.py** `GetBed`/`BedFlank`/`GetFasta` —
-    extract flanking regions (`--flank`).
 
 `progress.py` = terminal progress reporting: it mirrors a subprocess's own
 progress display (the `datasets` CLI draws one) instead of capturing it, wraps
@@ -104,7 +104,8 @@ so a missing column is an error at CLI start-up and extra/reordered columns are
 warned about and fixed in memory) + path/timing helpers + the
 `StepInfo`/`RunArguments`/`RunInfo` dataclasses (and `DownloadArguments`/`SequenceCounts`/`DownloadInfo` for the
 `get-databases` log); `versions.py` = dependency-version detection + `env.yml`
-comparison (reported in the log and warned about at startup); `log.py` = the
+comparison, plus `report_run_context` (the startup banner, called by the
+`screening all` subcommand); `log.py` = the
 `eefinder` logger + `enable_debug()` (the `--debug` flag on both commands lowers
 it to DEBUG; `logger.debug(...)` calls throughout are silent otherwise). The run
 finishes by renaming intermediates to `PREFIX.EEs.*` and writing `eefinder.log`
@@ -174,6 +175,8 @@ pytest -m integration       # end-to-end CLI runs against test_files/
 ```
 
 - Unit tests use synthetic inputs in `tmp_path` — no binaries required.
+  `test_models.py`, `test_search_methods.py` and `test_stages.py` cover the
+  output models, the search-method registry and the stage base class.
 - Integration tests shell out to the `eefinder` console script and
   auto-**skip** when `blastx`/`makeblastdb`/`bedtools` are absent.
 - See `docs/testing.md` for details. `test_files/` holds the example inputs.
@@ -188,14 +191,19 @@ pytest -m integration       # end-to-end CLI runs against test_files/
 
 ## Conventions & gotchas
 
-- **Side-effect classes:** instantiating a step class runs it. Don't expect
-  return values; check the output file.
-- **Filename chaining:** downstream steps hard-code the accreted suffix of the
-  upstream file. Changing an output name means updating every consumer in
-  `main.py`.
+- **Side-effect step classes:** instantiating a *step* class runs it and
+  returns nothing. A *stage* returns its outputs from `.run()` — use stages.
+- **Filename chaining is confined to the step classes.** Stages rename their
+  outputs to `ScreeningPaths` names, so a new file name is one edit in
+  `stages/paths.py`. Never hard-code an intermediate name elsewhere.
+- **The `PREFIX.EEs.*` names are published** and must not be renamed.
 - **The default `blastx` mode is the reliable path.** The DIAMOND modes can
   fail silently because the subprocess stderr is routed to `DEVNULL`; verify the
   `diamond` build (env pins `diamond=2.0.15`) if a DIAMOND run produces no hits.
+- **The integration golden files are the safety net.** Any refactor of the
+  pipeline must leave `PREFIX.EEs.{fa,tax.tsv,gff3,flanks.fa}` byte-identical;
+  `pytest -m integration` asserts it. Running `all` and running the eight
+  stages in sequence must agree.
 - Keep changes minimal and focused; update `CHANGELOG.md` each session.
 
 ## Changelog

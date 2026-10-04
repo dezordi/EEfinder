@@ -17,16 +17,15 @@ to regress:
 """
 
 from __future__ import annotations
-
 import filecmp
 import importlib.util
 import re
 import shutil
 import subprocess
-
+from pathlib import Path
 import pandas as pd
 import pytest
-
+from eefinder.stages import ScreeningPaths
 from conftest import binaries_available
 
 _PYRODIGAL = importlib.util.find_spec("pyrodigal_gv") and importlib.util.find_spec(
@@ -232,10 +231,9 @@ def test_translation_method_gv_drives_both_searches(
     assert all(re.search(r":\d+-\d+$", str(eid)) for eid in tax["Element-ID"])
 
     tmp = outdir / "tmp_files"
-    main_coords = list(tmp.glob(f"{PREFIX}.rn.fmt.pred.coords.tsv"))
-    bait_coords = list(
-        tmp.glob(f"{PREFIX}.rn.fmt.blastx.filtred.bed.fasta.pred.coords.tsv")
-    )
+    paths = ScreeningPaths(outdir=str(tmp), prefix=PREFIX)
+    main_coords = list(tmp.glob(f"{Path(paths.cleaned_genome).name}.pred.coords.tsv"))
+    bait_coords = list(tmp.glob(f"{Path(paths.ee_candidates).name}.pred.coords.tsv"))
     assert main_coords, "prediction did not run for the main EE search"
     assert bait_coords, "prediction did not run for the host-bait search"
 

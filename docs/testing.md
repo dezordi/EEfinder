@@ -24,10 +24,6 @@ pip install -e .
 pip install ".[dev]"                    # or: pip install -r requirements-dev.txt
 ```
 
-`requirements-dev.txt` pins:
-
-- `pytest` — test runner
-- `black` — code formatter / linter
 
 ## Running the tests
 

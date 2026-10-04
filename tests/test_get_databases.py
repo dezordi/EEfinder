@@ -756,7 +756,9 @@ def test_find_data_report(tmp_path):
 
 def test_cli_get_databases_errors_without_datasets_binary(monkeypatch, tmp_path):
     # When the datasets CLI is absent, the command fails fast with guidance.
-    monkeypatch.setattr("eefinder.scripts.main.shutil.which", lambda name: None)
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.shutil.which", lambda name: None
+    )
     result = CliRunner().invoke(
         cli,
         [
@@ -780,9 +782,11 @@ def test_cli_virus_defaults_taxon_to_viruses_root(monkeypatch, tmp_path):
         captured.update(kwargs)
 
     monkeypatch.setattr(
-        "eefinder.scripts.main.shutil.which", lambda name: "/usr/bin/datasets"
+        "eefinder.scripts.get_databases.shutil.which", lambda name: "/usr/bin/datasets"
     )
-    monkeypatch.setattr("eefinder.scripts.main.GetDatabases", fake_get_databases)
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.GetDatabases", fake_get_databases
+    )
 
     result = CliRunner().invoke(
         cli,
@@ -803,9 +807,11 @@ def test_cli_bacteria_defaults_taxon_to_bacteria_root(monkeypatch, tmp_path):
         captured.update(kwargs)
 
     monkeypatch.setattr(
-        "eefinder.scripts.main.shutil.which", lambda name: "/usr/bin/datasets"
+        "eefinder.scripts.get_databases.shutil.which", lambda name: "/usr/bin/datasets"
     )
-    monkeypatch.setattr("eefinder.scripts.main.GetDatabases", fake_get_databases)
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.GetDatabases", fake_get_databases
+    )
 
     result = CliRunner().invoke(
         cli,
@@ -829,7 +835,7 @@ def test_cli_bacteria_defaults_taxon_to_bacteria_root(monkeypatch, tmp_path):
 def test_cli_requires_taxon_for_host(monkeypatch, tmp_path):
     # host has no default taxon, so omitting -tx is a usage error.
     monkeypatch.setattr(
-        "eefinder.scripts.main.shutil.which", lambda name: "/usr/bin/datasets"
+        "eefinder.scripts.get_databases.shutil.which", lambda name: "/usr/bin/datasets"
     )
     result = CliRunner().invoke(
         cli,

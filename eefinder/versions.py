@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import numpy
 import pandas
+from eefinder.log import logger
 
 #: External binaries and the command used to query each one's version.
 _TOOL_COMMANDS = {
@@ -188,3 +189,70 @@ def collect_dependency_versions(
         )
         for name in DEPENDENCY_NAMES
     ]
+
+
+def write_versions_yml(path: str, key: str) -> str:
+    """Write the detected dependency versions as YAML nested under ``key``.
+
+    Parameters
+    ----------
+    path : str
+        File to write.
+    key : str
+        Top-level key the versions are nested under.
+
+    Returns
+    -------
+    str
+        ``path``.
+
+    Example
+    -------
+    >>> write_versions_yml("versions.yml", "EEFINDER")  # doctest: +SKIP
+    'versions.yml'
+    """
+    from eefinder import __version__
+
+    detected = _detected_versions()
+    lines = [f'"{key}":', f"    eefinder: {__version__}"]
+    for name in DEPENDENCY_NAMES:
+        version = detected.get(name)
+        if version and name != "python":
+            lines.append(f"    {name}: {version}")
+    with open(path, "w") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return path
+
+
+HOMEPAGE = "https://github.com/WallauBioinfo/EEfinder"
+
+
+def report_run_context(system, dependencies) -> None:
+    """Log the EEfinder version, host context and dependency versions.
+
+    Emits a warning for any dependency whose runtime version differs from the
+    ``env.yml`` pin or that could not be found on ``PATH``.
+
+    Parameters
+    ----------
+    system : SystemInfo
+        Host context from :func:`collect_system_info`.
+    dependencies : list of DependencyVersion
+        Versions from :func:`collect_dependency_versions`.
+    """
+    from eefinder import __version__
+
+    logger.info(f"This is EEfinder {__version__}")
+    logger.info(f"Homepage is {HOMEPAGE}")
+    logger.info(f"Operating system is {system.operating_system}")
+    logger.info(f"You are {system.user}")
+    for dep in dependencies:
+        if dep.status == STATUS_MISMATCH:
+            logger.warning(
+                f"{dep.name} {dep.detected} differs from the env.yml pin "
+                f"{dep.expected}"
+            )
+        elif dep.status == STATUS_NOT_FOUND:
+            logger.warning(f"{dep.name} was not found on PATH")
+        else:
+            logger.info(f"Using {dep.name} {dep.detected}")

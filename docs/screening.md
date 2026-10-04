@@ -42,41 +42,64 @@ eefinder screening \
 
 ## Pipeline steps
 
-A run goes through the twelve stages below — the same ones `eefinder.log`
-records, in this order, with a timing for each. Every stage writes its result to
-disk before the next picks it up, so any of them can be inspected afterwards
-under `tmp_files/`.
+`screening` is a command group. Invoked without a subcommand it runs the whole
+pipeline, exactly as before:
 
-1. **Prepare input data** — prefix every FASTA header (`>PREFIX/…`) and drop
-   contigs shorter than `--length`.
-2. **Index databases** — build the BLAST or DIAMOND indexes for `-db` and `-bt`
-   (only with `--index_databases`).
-3. **Similarity search** — search the genome against `-db`, then collapse
-   redundant hits by query, coordinate range and strand (`--range_junction`).
-   `--translation_method` controls how the genome is translated — see
-   [Translation methods](translation-methods.md).
-4. **Extraction of putative EEs** — cut the surviving candidate regions out of
-   the genome.
-5. **Filter step** — search those candidates against the host baits `-bt` and
-   drop every candidate whose best bait hit outscores its best `-db` hit.
-6. **Get basic taxonomy** — join the surviving hits to the metadata CSV. Its
-   header is validated before the run starts (see
-   [the required format](get-databases.md#the-metadata-csv-format)).
-7. **Merge truncated elements** — join neighbouring fragments of the same taxon
-   and strand (`--limit`, `--merge_level`) and re-extract the merged sequences.
-8. **Clean EEs** — optional soft-mask filter (`--clean_masked`).
-9. **Create final taxonomy** — build one row per element, flag overlapping
-   elements and add `Average_pident`.
-10. **Filter overlapping elements** — resolve overlaps by the chosen strategy —
-    see [Overlap resolution](overlap.md).
-11. **Generate GFF3 annotation** — write the taxonomy table as GFF3.
-12. **Extract flanking regions** — `--flank` nt on each side of every element.
+```bash
+eefinder screening -in genome.fa -od results/ \
+  -db db/virus.fa -mt db/virus.csv -bt db/host.fa
+```
+
+Each stage is also a subcommand of its own, so a pipeline can be driven step by
+step, resumed, or split across jobs:
+
+| Subcommand | Does | Reads | Writes |
+|-----------|------|-------|--------|
+| `prepare` | Validate `-mt`/`-db`/`-bt`, build the search indexes | the reference inputs | the BLAST/DIAMOND indexes |
+| `clean` | Drop contigs below `--length`, prefix the headers | `-in` | `*.cleaned_genome.fa` |
+| `align` | Translated search, collapse redundant hits, cut out candidates | the cleaned genome, `-db` | `*.ee_hits*.tsv`, `*.ee_candidates.*` |
+| `filter` | Reverse search against the host baits, drop what matches them harder | the candidates, `-bt` | `*.host_hits*.tsv`, `*.ee_hits.validated.tsv` |
+| `taxonomy` | Join the surviving hits to the metadata | the validated hits, `-mt` | `*.taxonomy_signature.csv` |
+| `merge` | Merge same-taxon fragments, build the element table | the signature, the cleaned genome | `*.elements.fa`, `*.elements.tax.tsv` |
+| `postprocess` | Repeat filter, overlap resolution, GFF3 | the elements and their table | `*.elements.gff3`, `*.elements.cleaned.*` |
+| `flanks` | Extract the flanking regions | the elements, the cleaned genome | `*.flanks.fa` |
+| `all` | Every stage, then publish `PREFIX.EEs.*` | all of the above | the [documented outputs](output.md) |
+
+`eefinder.log` records the same stages, in this order, with a timing for each.
+Running `all` is equivalent to running the eight stages in sequence; both
+produce identical results.
+
+### Running one stage
+
+A stage takes `-od` and `-pr`, and defaults its file inputs to the canonical
+names under that directory — so a sequence of subcommands needs no plumbing:
+
+```bash
+O=results; P=Ae_aeg_Aag2
+
+eefinder screening prepare  -od $O -pr $P -db db/virus.fa -mt db/virus.csv -bt db/host.fa -id
+eefinder screening clean    -od $O -pr $P -in genome.fa -ln 1000
+eefinder screening align    -od $O -pr $P -db db/virus.fa -p 8
+eefinder screening filter   -od $O -pr $P -bt db/host.fa -p 8
+eefinder screening taxonomy -od $O -pr $P -mt db/virus.csv
+eefinder screening merge    -od $O -pr $P -lm 100
+eefinder screening postprocess -od $O -pr $P
+eefinder screening flanks   -od $O -pr $P
+```
+
+Pass a path explicitly to read from somewhere else, e.g.
+`eefinder screening align --genome other/run.cleaned_genome.fa …`.
 
 ```{note}
-The similarity search therefore runs **twice** — once for the genome against
-`-db` (stage 3) and once for the candidates against `-bt` (stage 5) — always
-with the same `--mode` and `--translation_method`.
+Only `all` renames its results to `PREFIX.EEs.*`, archives the intermediates
+and writes `eefinder.log`. A stage run on its own leaves its outputs under
+their stage names and prints them, which is what a later stage reads.
 ```
+
+Every subcommand also accepts `--versions-yml PATH` (with `--versions-key`) to
+record the versions of EEfinder and the binaries it drove, and `--debug`.
+
+The stages are importable as classes too — see the [Python API](api.md).
 
 (diamond-sensitivity)=
 ## The sensitivity trade-off

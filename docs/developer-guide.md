@@ -10,7 +10,12 @@ communicate through files on disk whose names accrete suffixes (`.rn.fmt`,
 
 | Module | Responsibility |
 |--------|----------------|
-| `scripts/main.py` | The `click` command group (`screening`, `get-databases`). |
+| `scripts/main.py` | The top-level `click` group; registers the two command groups. |
+| `scripts/screening.py` | The `screening` group and its nine subcommands. |
+| `scripts/get_databases.py` | The `get-databases` group and its three subcommands. |
+| `stages/` | One class per pipeline stage (the importable API). |
+| `models.py` | Output schemas the stages declare and `Stage.run` enforces. |
+| `search_methods.py` | Pluggable hit-table producers + the registry. |
 | `prepare_data.py` | `PrepareGenome` — prefix FASTA headers **and** apply the length cutoff in one pass (what the pipeline runs); `InsertPrefix` standalone. |
 | `clean_data.py` | `RemoveShortSequences`, `MaskClean`. |
 | `make_database.py` | `MakeDB` — build BLAST/DIAMOND databases. |
@@ -37,9 +42,17 @@ communicate through files on disk whose names accrete suffixes (`.rn.fmt`,
 
 - **Side-effect classes:** instantiating a step class runs it. Don't expect
   return values — check the output file.
-- **Filename chaining:** downstream steps hard-code the accreted suffix of the
-  upstream file. Changing an output name means updating every consumer in
-  `main.py`.
+- **Two levels.** A *step* class (package root) runs on `__init__`, returns
+  nothing, and names its output by appending a suffix to its input. A *stage*
+  class (`stages/`) takes explicit inputs, runs on `run()`, and returns a
+  dataclass of paths. New code should compose stages; the steps are the
+  implementation.
+- **`ScreeningPaths` owns every file name.** Stages rename each step's output to
+  the canonical name, so changing a name means editing `stages/paths.py`, not
+  hunting through the pipeline. The `PREFIX.EEs.*` names are published.
+- **Stages declare their output models.** `Stage.models` maps an output
+  attribute to a schema in `models.py`, and `Stage.run` checks each one. A new
+  search method is correct when it satisfies `models.HIT_TABLE`.
 - **The metadata CSV is read by column position.** `GetFinalTaxonomy` indexes
   into the joined table at fixed offsets (`_SPECIES_COL` … `_HOST_COL` in
   `get_taxonomy.py`), which assumes the seven-column `-mt` layout documented in
