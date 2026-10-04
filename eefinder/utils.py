@@ -230,6 +230,7 @@ class DownloadArguments:
     released_before: str = ""
     #: Taxa left out of the download entirely (never requested from NCBI).
     exclude_taxa: str = ""
+    split_level: str = ""
 
 
 @dataclass
@@ -254,6 +255,8 @@ class DownloadInfo:
     end_time: str
     total_time_minutes: str
     steps_information: list[StepInfo] = field(default_factory=list)
+    skipped_taxa: list = field(default_factory=list)
+    failed_taxa: list = field(default_factory=list)
 
     @classmethod
     def from_run(
@@ -264,6 +267,8 @@ class DownloadInfo:
         start_time: float,
         end_time: float,
         steps_information: list[StepInfo],
+        skipped_taxa: list = None,
+        failed_taxa: list = None,
     ) -> "DownloadInfo":
         """Assemble the download summary from metadata, timestamps and steps.
 
@@ -279,6 +284,10 @@ class DownloadInfo:
             POSIX timestamps bounding the whole download.
         steps_information : list[StepInfo]
             One :class:`StepInfo` per download phase.
+        skipped_taxa : list, optional
+            Taxa left out of a split download, each with its reason.
+        failed_taxa : list, optional
+            Taxa whose download failed after every attempt.
 
         Returns
         -------
@@ -292,6 +301,8 @@ class DownloadInfo:
             end_time=_format_timestamp(end_time),
             total_time_minutes=_elapsed_minutes(start_time, end_time),
             steps_information=steps_information,
+            skipped_taxa=list(skipped_taxa or ()),
+            failed_taxa=list(failed_taxa or ()),
         )
 
 

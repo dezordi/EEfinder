@@ -31,6 +31,7 @@ communicate through files on disk whose names accrete suffixes (`.rn.fmt`,
 | `gff.py` | `WriteGFF3`. |
 | `get_databases.py` | `GetDatabases` — the `get-databases` implementation. |
 | `taxon_exclusion.py` | Taxonomy expansion so `--exclude-taxon` can drop a branch before it is downloaded. |
+| `taxon_split.py` | `plan_split` — one download per family/genus, plus the subtrees that rank cannot reach. |
 | `progress.py` | Terminal progress reporting + download retry/stall detection. |
 | `normalization.py` | `standardize_protein` — per-target protein-name cleaning. |
 | `utils.py` | `-mt` header validation (`check_metadata_columns`/`check_metadata_file`) + path/timing helpers and the run-info dataclasses. |

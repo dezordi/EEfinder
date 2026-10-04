@@ -86,6 +86,7 @@ eefinder get-databases host -tx "Aedes aegypti" -od db/ -pr host
 | `-pr/--prefix` | Output basename (default: the dataset type → `virus.fa` / `virus.csv`). |
 | `--refseq/--all-sequences` | Restrict to RefSeq (default) or fetch everything. |
 | `--exclude-taxon` | Leave a branch of the taxonomy out of the download entirely; repeatable. Defaults to SARS-CoV-2 for `virus`. See [Excluding a virus from the download](#excluding-a-virus-from-the-download). |
+| `--split-level` | Split the download into one request per `family` (default) or `genus`, instead of one request for the whole taxon. `none` restores the single request. Subtrees with no taxon at that rank are skipped and logged. Not on `host`. |
 | `--cluster/--no-cluster` | Collapse 100%-identical / 100%-coverage duplicate proteins with `cd-hit` before writing the database (on by default). |
 | `--released-before` | Only include data released on or before this date (`YYYY-MM-DD`), so a build can be reproduced later. |
 | `--keep-download` | Keep the downloaded zip and the extracted `*_ncbi/` directory (deleted by default). |
@@ -181,6 +182,63 @@ Building metadata  [###########-------------------------]  1.2M/4.1M
 Progress is shown **only on a terminal**: piped into a file or a workflow engine
 the redraw sequences would be noise, so the output falls back to being captured
 silently. `EEFINDER_NO_PROGRESS=1` turns it off on a terminal too.
+
+### Splitting the download (`--split-level`)
+
+A single request for a broad taxon is the transfer that fails and hangs: asking
+for every virus at once moves the whole of RefSeq viral in one package.
+`--split-level` asks for **one family at a time** instead (the default), and the
+packages are concatenated before the database is built — clustering,
+standardisation and the metadata CSV all see the merged set, so the result is
+the same as a single download.
+
+```bash
+# the default: one request per viral family
+eefinder get-databases virus -od db/
+
+# one request per genus instead (more, smaller requests)
+eefinder get-databases virus -od db/ --split-level genus
+
+# back to a single request
+eefinder get-databases virus -od db/ --split-level none
+```
+
+Measured on the current taxonomy: all viruses is **427 families**, or 4,198
+genera; all bacteria is **1,136 families**. A taxon that is already at the split
+rank — `-tx Flaviviridae` with `--split-level family` — is downloaded in one
+request, so narrowing the taxon costs nothing.
+
+```{important}
+**Records with no taxon at that rank are not downloaded.** 45% of viral species
+have no family, and they account for 14% of the assemblies (38,723) — almost all
+of them `uncultured virus`, `Bacteriophage sp.` and similar. They are skipped on
+purpose: with no family there is no `Family`/`Genus` to assign and no
+`Molecule_type` to look up, so the elements they would produce carry no
+taxonomy. Every skipped subtree is listed in `{prefix}.log` under
+`skipped_taxa`, with its assembly count and the reason.
+```
+
+```json
+"skipped_taxa": [
+    {
+        "tax_id": 3367772,
+        "name": "unclassified Elliovirales",
+        "rank": "",
+        "assemblies": 12,
+        "reason": "no family in its lineage"
+    }
+]
+```
+
+`--split-level` composes with `--exclude-taxon`: the split is planned first, and
+an excluded branch is pruned out of whichever split taxon contains it.
+
+```{note}
+With hundreds of requests, one failing after every attempt no longer costs the
+run: it is skipped, recorded in `{prefix}.log` under `failed_taxa`, and a
+warning at the end says how many packages are missing and that the database is
+incomplete. A run only fails outright if *every* request failed.
+```
 
 ### Retries and stalled transfers
 

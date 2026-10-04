@@ -17,6 +17,7 @@ from eefinder.get_databases import (
     DEFAULT_TAXA,
 )
 from eefinder.taxon_exclusion import DEFAULT_VIRUS_EXCLUSIONS, NO_EXCLUSION
+from eefinder.taxon_split import NO_SPLIT, SPLIT_LEVELS
 from eefinder.progress import DEFAULT_ATTEMPTS, DEFAULT_STALL_TIMEOUT
 from eefinder import __version__
 
@@ -128,6 +129,7 @@ def _run_get_databases(
     keep_download=False,
     released_before=None,
     exclude_taxa=(),
+    split_level=NO_SPLIT,
 ):
     """Check for the datasets binary and run :class:`GetDatabases`."""
     if debug:
@@ -139,7 +141,7 @@ def _run_get_databases(
         f"standardize_proteins={standardize_proteins} cluster={cluster} "
         f"attempts={attempts} stall_timeout={stall_timeout} "
         f"keep_download={keep_download} released_before={released_before!r} "
-        f"exclude_taxa={exclude_taxa!r}"
+        f"exclude_taxa={exclude_taxa!r} split_level={split_level!r}"
     )
     if shutil.which(DATASETS_BINARY) is None:
         click.secho(
@@ -172,6 +174,7 @@ def _run_get_databases(
             keep_download=keep_download,
             released_before=released_before,
             exclude_taxa=exclude_taxa,
+            split_level=split_level,
         )
     except Exception as err:
         click.secho(f"Failed to download databases: {err}", err=True, fg="red")
@@ -190,6 +193,16 @@ def get_databases():
 
 
 @get_databases.command(name="virus")
+@click.option(
+    "--split-level",
+    help="Split the download into one request per taxon at this rank instead of "
+    "asking for the whole taxon at once, which is the request that fails on "
+    "broad taxa. Subtrees with no taxon at the rank are skipped and listed in "
+    "the log: with no family there is no taxonomy to assign them. Pass 'none' "
+    f"for a single request. default = family",
+    default="family",
+    type=click.Choice(list(SPLIT_LEVELS) + [NO_SPLIT]),
+)
 @_common_download_options
 @click.option(
     "-tx",
@@ -213,6 +226,7 @@ def get_databases():
     default=True,
 )
 def get_databases_virus(
+    split_level,
     outdir,
     prefix,
     cluster,
@@ -243,10 +257,21 @@ def get_databases_virus(
         keep_download=keep_download,
         released_before=released_before,
         exclude_taxa=_resolve_exclusions(exclude_taxa, DEFAULT_VIRUS_EXCLUSIONS),
+        split_level=split_level,
     )
 
 
 @get_databases.command(name="bacteria")
+@click.option(
+    "--split-level",
+    help="Split the download into one request per taxon at this rank instead of "
+    "asking for the whole taxon at once, which is the request that fails on "
+    "broad taxa. Subtrees with no taxon at the rank are skipped and listed in "
+    "the log: with no family there is no taxonomy to assign them. Pass 'none' "
+    f"for a single request. default = family",
+    default="family",
+    type=click.Choice(list(SPLIT_LEVELS) + [NO_SPLIT]),
+)
 @_common_download_options
 @click.option(
     "-tx",
@@ -271,6 +296,7 @@ def get_databases_virus(
     default=True,
 )
 def get_databases_bacteria(
+    split_level,
     outdir,
     prefix,
     cluster,
@@ -301,6 +327,7 @@ def get_databases_bacteria(
         keep_download=keep_download,
         released_before=released_before,
         exclude_taxa=_resolve_exclusions(exclude_taxa),
+        split_level=split_level,
     )
 
 

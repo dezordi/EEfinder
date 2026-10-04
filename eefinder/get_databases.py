@@ -59,6 +59,7 @@ from eefinder.progress import (
 )
 from eefinder.translation import cluster_proteins, parse_cdhit_clusters
 from eefinder.taxon_exclusion import batch_taxa, expand_taxon_excluding
+from eefinder.taxon_split import NO_SPLIT, SPLIT_LEVELS, plan_split
 
 #: cd-hit executable used to collapse identical proteins (from ``cd-hit``).
 CDHIT_BINARY = "cd-hit"
@@ -874,6 +875,7 @@ class GetDatabases:
         keep_download: bool = False,
         released_before: "str | None" = None,
         exclude_taxa: "tuple[str, ...]" = (),
+        split_level: str = NO_SPLIT,
     ) -> None:
         if dataset not in DATASET_CHOICES:
             raise ValueError(f"Unknown dataset type: {dataset!r}")
@@ -892,6 +894,12 @@ class GetDatabases:
         self.keep_download = keep_download
         self.released_before = validate_date(released_before)
         self.exclude_taxa = tuple(exclude_taxa or ())
+        if split_level != NO_SPLIT and split_level not in SPLIT_LEVELS:
+            raise ValueError(f"Unknown split level: {split_level!r}")
+        self.split_level = split_level
+        #: Taxa the split could not reach, and taxa whose download failed.
+        self.skipped_taxa: "list[dict]" = []
+        self.failed_taxa: "list[dict]" = []
 
         self.get_databases()
 
@@ -1188,11 +1196,14 @@ class GetDatabases:
                 keep_download=self.keep_download,
                 released_before=self.released_before or "",
                 exclude_taxa=", ".join(self.exclude_taxa),
+                split_level=self.split_level,
             ),
             sequence_counts=self.sequence_counts,
             start_time=start_time,
             end_time=end_time,
             steps_information=steps,
+            skipped_taxa=self.skipped_taxa,
+            failed_taxa=self.failed_taxa,
         )
         log_path = f"{self.outdir}/{self.prefix}.log"
         logger.debug(f"Writing download summary to {log_path}")
@@ -1201,15 +1212,16 @@ class GetDatabases:
         logger.info(f"Wrote {log_path}")
 
     def _plan_download(self) -> "list[list[str]]":
-        """Work out which taxa to ask for, honouring ``exclude_taxa``.
+        """Work out which taxa to ask for, one list per ``datasets`` call.
 
-        Returns one list of taxa per ``datasets`` call: ``[[self.taxon]]`` when
-        nothing is excluded, otherwise the sibling taxa that cover the requested
-        taxon minus the excluded branches, split into ``--inputfile``-sized
-        batches. The excluded branch is never requested, so its records are
-        never transferred.
+        Composes two independent decisions: ``split_level`` turns a broad taxon
+        into one request per family or genus, and ``exclude_taxa`` prunes
+        branches out of whatever is requested. Subtrees with no taxon at the
+        split rank are recorded in :attr:`skipped_taxa` rather than downloaded.
         """
         self._exclusion_summary = ""
+        if self.split_level != NO_SPLIT:
+            return self._plan_split_download()
         if not self.exclude_taxa:
             return [[self.taxon]]
 
@@ -1241,6 +1253,62 @@ class GetDatabases:
         )
         return [[str(t) for t in batch] for batch in batches]
 
+    def _plan_split_download(self) -> "list[list[str]]":
+        """One request per taxon at ``split_level``, exclusions applied."""
+        plan = plan_split(self.taxon, self.split_level, self.datasets_bin)
+        self.skipped_taxa = [
+            {
+                "tax_id": entry.tax_id,
+                "name": entry.name,
+                "rank": entry.rank,
+                "assemblies": entry.assembly_count,
+                "reason": entry.reason,
+            }
+            for entry in plan.skipped
+        ]
+        if plan.skipped:
+            logger.warning(
+                f"{len(plan.skipped)} subtree(s) below {plan.root.name} have no "
+                f"{plan.level} and were not downloaded "
+                f"({plan.skipped_assemblies} assembly/assemblies). Without a "
+                f"{plan.level} there is no taxonomy to assign them. They are "
+                f"listed in {self.outdir}/{self.prefix}.log"
+            )
+        if not plan.split:
+            if self.exclude_taxa:
+                self.split_level = NO_SPLIT
+                return self._plan_download()
+            return [[self.taxon]]
+
+        batches: "list[list[str]]" = []
+        for node in plan.taxa:
+            batches.extend(self._batches_for(node))
+        self._exclusion_summary = (
+            f"Split '{self.taxon}' into {len(plan.taxa)} {plan.level} taxa "
+            f"({len(batches)} download(s)); {len(plan.skipped)} subtree(s) with "
+            f"no {plan.level} were skipped."
+        )
+        logger.info(
+            f"Downloading {len(plan.taxa)} {plan.level} taxa in "
+            f"{len(batches)} request(s)"
+        )
+        return batches
+
+    def _batches_for(self, node) -> "list[list[str]]":
+        """Requests covering one split taxon, minus any excluded branch below it."""
+        if not self.exclude_taxa:
+            return [[str(node.tax_id)]]
+        expansion = expand_taxon_excluding(
+            str(node.tax_id), self.exclude_taxa, datasets_bin=self.datasets_bin
+        )
+        if not expansion.pruned:
+            return [[str(node.tax_id)]]
+        logger.info(
+            f"{node.name}: leaving out "
+            + ", ".join(f"{n.name} ({n.tax_id})" for n in expansion.excluded)
+        )
+        return [[str(t) for t in batch] for batch in batch_taxa(expansion.taxa)]
+
     def _download_batches(
         self, batches: "list[list[str]]", zip_path: str
     ) -> "list[str]":
@@ -1261,10 +1329,32 @@ class GetDatabases:
             )
             try:
                 self._download(part_zip, inputfile=listing)
+            except Exception as err:
+                # One failed taxon must not cost a run of hundreds of requests.
+                # The package is recorded as missing and the run carries on; the
+                # summary at the end says the database is incomplete.
+                logger.error(
+                    f"package {index}/{len(batches)} failed and was skipped: {err}"
+                )
+                self.failed_taxa.append({"taxa": list(batch), "error": str(err)})
+                if os.path.exists(part_zip):
+                    os.remove(part_zip)
+                continue
             finally:
                 if not self.keep_download and os.path.exists(listing):
                     os.remove(listing)
             written.append(part_zip)
+        if self.failed_taxa and not written:
+            raise RuntimeError(
+                f"every one of the {len(batches)} download(s) failed; "
+                "nothing was retrieved"
+            )
+        if self.failed_taxa:
+            logger.warning(
+                f"{len(self.failed_taxa)} of {len(batches)} download(s) failed; "
+                f"the database is incomplete. They are listed in "
+                f"{self.outdir}/{self.prefix}.log"
+            )
         return written
 
     def _download(self, zip_path: str, inputfile: "str | None" = None) -> None:

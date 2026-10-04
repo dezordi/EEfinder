@@ -27,6 +27,10 @@ NO_EXCLUSION = "none"
 #: Maximum number of taxa the ``datasets`` CLI accepts in an ``--inputfile``.
 INPUTFILE_LIMIT = 100
 
+#: Taxa looked up per ``summary taxonomy`` call. They travel in the request
+#: line, which the gateway rejects past a few hundred ids (HTTP 431).
+SUMMARY_CHUNK = 100
+
 
 class TaxonNode(NamedTuple):
     """One node of the NCBI taxonomy, as ``datasets`` reports it."""
@@ -37,6 +41,10 @@ class TaxonNode(NamedTuple):
     parents: "tuple[int, ...]"
     #: Direct children only.
     children: "tuple[int, ...]"
+    #: Rank, lower-cased (``"family"``, ``"genus"``, ...); empty when unranked.
+    rank: str = ""
+    #: Assemblies NCBI holds for the subtree, used to report download sizes.
+    assembly_count: int = 0
 
 
 class Expansion(NamedTuple):
@@ -82,7 +90,15 @@ def summarize_taxa(
     """
     if not taxa:
         return {}
-    joined = ",".join(str(t) for t in taxa)
+    items = [str(t) for t in taxa]
+    if len(items) > SUMMARY_CHUNK:
+        nodes: "dict[int, TaxonNode]" = {}
+        for start in range(0, len(items), SUMMARY_CHUNK):
+            nodes.update(
+                summarize_taxa(items[start : start + SUMMARY_CHUNK], datasets_bin)
+            )
+        return nodes
+    joined = ",".join(items)
     command = (
         f"{datasets_bin} summary taxonomy taxon {shlex.quote(joined)} --as-json-lines"
     )
@@ -112,11 +128,17 @@ def summarize_taxa(
         if tax_id is None:
             continue
         name = (record.get("current_scientific_name") or {}).get("name", "")
+        counts = {
+            entry.get("type"): entry.get("count", 0)
+            for entry in (record.get("counts") or [])
+        }
         nodes[int(tax_id)] = TaxonNode(
             tax_id=int(tax_id),
             name=name,
             parents=tuple(record.get("parents") or ()),
             children=tuple(record.get("children") or ()),
+            rank=str(record.get("rank") or "").lower(),
+            assembly_count=int(counts.get("COUNT_TYPE_ASSEMBLY") or 0),
         )
     return nodes
 
