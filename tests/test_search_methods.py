@@ -57,7 +57,7 @@ def test_check_available_names_the_missing_binary():
         name = "missing-tool"
         requires = ("definitely-not-on-path",)
 
-        def search(self, query, database, threads, out_table):  # pragma: no cover
+        def search(self, query, database, threads, out_table):
             raise AssertionError("should not be reached")
 
     with pytest.raises(FileNotFoundError, match="definitely-not-on-path"):
@@ -69,7 +69,6 @@ def test_run_rejects_a_method_that_violates_the_hit_model(tmp_path):
         name = "wrong-shape"
 
         def search(self, query, database, threads, out_table):
-            # Three fields instead of the twelve outfmt6 requires.
             with open(out_table, "w") as handle:
                 handle.write("q\ts\t30.0\n")
 
@@ -95,7 +94,7 @@ def test_register_search_method_rejects_a_nameless_class():
 
         @register_search_method
         class Nameless(SearchMethod):
-            def search(self, query, database, threads, out_table):  # pragma: no cover
+            def search(self, query, database, threads, out_table):
                 raise AssertionError("should not be reached")
 
 

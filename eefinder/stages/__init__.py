@@ -36,8 +36,6 @@ from eefinder.stages.pipeline import ScreeningPipeline, ScreeningPipelineOutputs
 from eefinder.stages.base import Stage, StageOutputs
 from eefinder.stages.paths import ScreeningPaths
 
-#: The stages in pipeline order. ``ScreeningPipeline`` is appended last because
-#: it composes the others rather than being one of them.
 STAGES = (
     PrepareInputs,
     DataCleaning,
@@ -50,7 +48,6 @@ STAGES = (
     ScreeningPipeline,
 )
 
-#: Stage class by CLI subcommand name.
 STAGES_BY_NAME = {stage.name: stage for stage in STAGES}
 
 __all__ = [

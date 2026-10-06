@@ -6,13 +6,6 @@ import pytest
 from eefinder import taxon_exclusion, taxon_split
 from eefinder.taxon_split import NO_SPLIT, SkippedTaxon, plan_split, taxa_at_rank
 
-# Root
-#  |- OrderA (order)
-#  |    |- FamA (family) -- SpA
-#  |    `- FamB (family)
-#  |- OrderB (order)        -- no family anywhere below
-#  |    `- UnclassB
-#  `- FamC (family)
 TREE = {
     1: {
         "name": "Root",
@@ -44,7 +37,6 @@ TREE = {
     20: {"name": "OrderB", "rank": "order", "parents": [1], "children": [201]},
     201: {"name": "UnclassB", "rank": "", "parents": [1, 20], "children": [], "asm": 5},
     30: {"name": "FamC", "rank": "family", "parents": [1], "children": [], "asm": 11},
-    # Recognised family, nothing deposited: no assemblies.
     300: {"name": "FamEmpty", "rank": "family", "parents": [1, 10], "children": []},
 }
 BY_NAME = {node["name"].lower(): tax_id for tax_id, node in TREE.items()}
@@ -93,7 +85,6 @@ def _fake_datasets(monkeypatch, calls=None):
                     args, 1, "", f"Error: '{item}' is not recognized."
                 )
             if rank:
-                # --rank walks the subtree, like the real CLI
                 ids.extend(d for d in _descendants(tax_id) if TREE[d]["rank"] == rank)
             else:
                 ids.append(tax_id)
@@ -126,7 +117,6 @@ def test_plan_splits_a_broad_taxon_into_families(monkeypatch):
 
     assert plan.level == "family"
     assert plan.split
-    # FamEmpty (300) has no records and is not requested.
     assert [node.tax_id for node in plan.taxa] == [30, 100, 200]
 
 
@@ -187,7 +177,6 @@ def test_unknown_level_is_rejected(monkeypatch):
 def test_unknown_root_is_reported(monkeypatch):
     _fake_datasets(monkeypatch)
 
-    # Whichever layer raises, the message has to name the taxon.
     with pytest.raises(RuntimeError, match="9999"):
         plan_split("9999", "family")
 
@@ -233,7 +222,6 @@ def test_skipping_empty_taxa_does_not_inflate_the_skipped_assemblies(monkeypatch
 
     plan = plan_split("1", "family")
 
-    # Nothing is reported as lost that NCBI does not hold.
     assert plan.skipped_assemblies == sum(
         e.assembly_count for e in plan.skipped if e.reason != "no records in NCBI"
     )

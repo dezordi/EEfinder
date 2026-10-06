@@ -26,10 +26,8 @@ from eefinder.taxon_exclusion import (
     summarize_taxa,
 )
 
-#: Ranks a download may be split at.
 SPLIT_LEVELS = ("family", "genus")
 
-#: Value of ``--split-level`` that downloads the requested taxon in one request.
 NO_SPLIT = "none"
 
 
@@ -46,13 +44,11 @@ class SkippedTaxon(NamedTuple):
 class SplitPlan(NamedTuple):
     """The taxa to download, and what was left out."""
 
-    #: Rank the split was made at, or :data:`NO_SPLIT`.
     level: str
     root: TaxonNode
-    #: One request per entry.
     taxa: "tuple[TaxonNode, ...]"
-    #: Subtrees with no taxon at ``level``, reported instead of downloaded.
     skipped: "tuple[SkippedTaxon, ...]"
+    unranked: "tuple[TaxonNode, ...]" = ()
 
     @property
     def split(self) -> bool:
@@ -163,6 +159,7 @@ def plan_split(
     root: str,
     level: str,
     datasets_bin: str = DATASETS_BINARY,
+    include_unranked: bool = False,
 ) -> SplitPlan:
     """Work out one download per taxon of ``level`` below ``root``.
 
@@ -177,6 +174,10 @@ def plan_split(
         ``"family"``, ``"genus"`` or :data:`NO_SPLIT`.
     datasets_bin : str
         Path/name of the ``datasets`` executable.
+    include_unranked : bool
+        Download the subtrees with no taxon at ``level`` as well, instead of
+        only reporting them. Their lineage still tells them apart, so they are
+        not merged together downstream.
 
     Returns
     -------
@@ -214,17 +215,10 @@ def plan_split(
         )
         return SplitPlan(level=level, root=node, taxa=(node,), skipped=())
 
-    # Taxa NCBI holds nothing for still exist in the taxonomy (ICTV recognises
-    # the family, no sequence has been deposited). Requesting them costs a round
-    # trip and yields a package with no protein.faa. They stay in ``covered``,
-    # so the walk below stops at them instead of reporting them a second
-    # time as unreachable.
     empty = {
         tax_id: node_ for tax_id, node_ in covered.items() if node_.assembly_count == 0
     }
     if empty and len(empty) == len(covered):
-        # Every count came back zero: assume the field is missing rather than
-        # that the whole taxon is empty, and request them anyway.
         logger.debug(
             f"no assembly counts available for the {level} taxa; requesting all"
         )
@@ -264,4 +258,19 @@ def plan_split(
         for entry in sorted(empty.values(), key=lambda n: n.tax_id)
     )
     taxa = tuple(covered[tax_id] for tax_id in sorted(covered) if tax_id not in empty)
-    return SplitPlan(level=level, root=node, taxa=taxa, skipped=skipped)
+    unranked: "tuple[TaxonNode, ...]" = ()
+    if include_unranked:
+        unranked = tuple(
+            taxonomy.node(tax_id)
+            for tax_id in uncovered
+            if taxonomy.node(tax_id).assembly_count
+        )
+        skipped = tuple(e for e in skipped if e.reason == "no records in NCBI")
+        taxa = taxa + unranked
+        logger.info(
+            f"including {len(unranked)} subtree(s) with no {level}, "
+            "distinguished by their lineage"
+        )
+    return SplitPlan(
+        level=level, root=node, taxa=taxa, skipped=skipped, unranked=unranked
+    )

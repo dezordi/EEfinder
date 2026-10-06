@@ -7,18 +7,16 @@ import pandas as pd
 from eefinder.overlap import FilterOverlap, _element_length, elements_to_remove
 
 TAX_COLUMNS = [
-    "Element-ID",
-    "Sense",
-    "Protein-IDs",
-    "Protein-Products",
-    "Molecule_type",
-    "Family",
-    "Genus",
-    "Species",
-    "Host",
-    "Overlaped_Element_ID",
+    "element_id",
+    "sense",
+    "protein_ids",
+    "protein_products",
+    "molecule_type",
+    "taxonomy",
+    "host",
+    "overlaped_element_id",
     "tag",
-    "Average_pident",
+    "average_pident",
 ]
 
 
@@ -33,10 +31,8 @@ def _row(element_id, family, tag, partners=""):
         "P|1.0",
         "prot",
         "ssRNA",
-        family,
-        "Gen",
-        "Sp",
-        "Host",
+        f"r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__{family};g__Gen;s__Sp",
+        "host",
         partners,
         tag,
         1.0,
@@ -45,7 +41,6 @@ def _row(element_id, family, tag, partners=""):
 
 def test_element_length_parses_coordinates():
     assert _element_length("ctg1:100-250") == 150
-    # Contig names with extra separators keep only the final coordinate span.
     assert _element_length("ctg-x:5-40") == 35
 
 
@@ -67,8 +62,6 @@ def test_targets_drops_non_target_members_of_a_cluster_with_a_target():
             _row("ctg2:0-500", "FamC", "unique"),
         ]
     )
-    # The cluster contains a FamA (target) member, so its FamB member is
-    # dropped; the unique FamC element is untouched (never overlaped).
     assert elements_to_remove(df, "targets", ["FamA"]) == {"ctg1:150-400"}
 
 
@@ -79,8 +72,6 @@ def test_targets_keeps_whole_cluster_without_a_target_family():
             _row("ctg1:150-400", "FamC", "overlaped", "ctg1:100-200"),
         ]
     )
-    # No member of the cluster is a target family, so the targets logic does not
-    # apply and the entire cluster is kept.
     assert elements_to_remove(df, "targets", ["FamA"]) == set()
 
 
@@ -91,17 +82,14 @@ def test_targets_keeps_cluster_where_all_members_are_targets():
             _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),
         ]
     )
-    # Both families are targets, so nothing is dropped.
     assert elements_to_remove(df, "targets", ["FamA", "FamB"]) == set()
 
 
 def test_targets_applies_per_cluster_independently():
     df = _tax_frame(
         [
-            # Cluster 1 (ctg1): has a FamA target -> drop the FamB member.
             _row("ctg1:100-200", "FamA", "overlaped", "ctg1:150-400"),
             _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),
-            # Cluster 2 (ctg2): no target member -> keep both.
             _row("ctg2:100-200", "FamB", "overlaped", "ctg2:150-400"),
             _row("ctg2:150-400", "FamC", "overlaped", "ctg2:100-200"),
         ]
@@ -112,13 +100,11 @@ def test_targets_applies_per_cluster_independently():
 def test_targets_chained_cluster_drops_all_non_targets():
     df = _tax_frame(
         [
-            # A-B-C chain (A-C do not directly overlap) is a single cluster.
             _row("ctg1:0-1000", "FamA", "overlaped", "ctg1:100-200"),
             _row("ctg1:100-200", "FamB", "overlaped", "ctg1:0-1000,ctg1:150-400"),
             _row("ctg1:150-400", "FamC", "overlaped", "ctg1:100-200"),
         ]
     )
-    # FamA is in the cluster, so both non-target members (FamB, FamC) are dropped.
     assert elements_to_remove(df, "targets", ["FamA"]) == {
         "ctg1:100-200",
         "ctg1:150-400",
@@ -132,7 +118,6 @@ def test_non_targets_drops_listed_families_from_cluster():
             _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),
         ]
     )
-    # FamB is a non-target (drop-list): drop it, keep the rest.
     assert elements_to_remove(df, "targets", [], ["FamB"]) == {"ctg1:150-400"}
 
 
@@ -143,7 +128,6 @@ def test_non_targets_never_wipes_a_fully_listed_cluster():
             _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),
         ]
     )
-    # Every member is on the drop-list, so the cluster is kept untouched.
     assert elements_to_remove(df, "targets", [], ["FamA", "FamB"]) == set()
 
 
@@ -154,15 +138,14 @@ def test_non_targets_leaves_clusters_without_a_listed_family():
             _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),
         ]
     )
-    # FamC is not present in the cluster, so nothing is dropped.
     assert elements_to_remove(df, "targets", [], ["FamC"]) == set()
 
 
 def test_longest_drops_shorter_of_each_overlap():
     df = _tax_frame(
         [
-            _row("ctg1:100-200", "FamA", "overlaped", "ctg1:150-400"),  # len 100
-            _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),  # len 250
+            _row("ctg1:100-200", "FamA", "overlaped", "ctg1:150-400"),
+            _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),
         ]
     )
     assert elements_to_remove(df, "longest", []) == {"ctg1:100-200"}
@@ -213,8 +196,8 @@ def test_filter_overlap_splits_kept_and_removed(tmp_path):
 
     kept = pd.read_csv(tax, sep="\t")
     removed = pd.read_csv(removed_tax, sep="\t")
-    assert list(kept["Element-ID"]) == ["ctg1:100-200"]
-    assert list(removed["Element-ID"]) == ["ctg1:150-400"]
+    assert list(kept["element_id"]) == ["ctg1:100-200"]
+    assert list(removed["element_id"]) == ["ctg1:150-400"]
 
     assert ">PFX/ctg1:100-200" in fasta.read_text()
     assert ">PFX/ctg1:150-400" not in fasta.read_text()
@@ -246,8 +229,8 @@ def test_filter_overlap_uses_non_target_families(tmp_path):
 
     kept = pd.read_csv(tax, sep="\t")
     removed = pd.read_csv(removed_tax, sep="\t")
-    assert list(kept["Element-ID"]) == ["ctg1:100-200"]
-    assert list(removed["Element-ID"]) == ["ctg1:150-400"]
+    assert list(kept["element_id"]) == ["ctg1:100-200"]
+    assert list(removed["element_id"]) == ["ctg1:150-400"]
 
 
 def test_filter_overlap_keep_strategy_is_a_no_op(tmp_path):
@@ -270,5 +253,5 @@ def test_filter_overlap_keep_strategy_is_a_no_op(tmp_path):
     )
 
     kept = pd.read_csv(tax, sep="\t")
-    assert list(kept["Element-ID"]) == ["ctg1:100-200", "ctg1:150-400"]
-    assert (tmp_path / "removed.tax").exists()  # empty removed table still written
+    assert list(kept["element_id"]) == ["ctg1:100-200", "ctg1:150-400"]
+    assert (tmp_path / "removed.tax").exists()

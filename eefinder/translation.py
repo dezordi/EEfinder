@@ -27,17 +27,14 @@ from Bio import SeqIO
 from eefinder.filter_table import OUTFMT6_COLUMNS
 from eefinder.log import logger
 
-#: Translation methods selectable via ``--translation-method``.
 TRANSLATION_METHODS = ("default", "gv", "rv", "gv-rv")
 
-#: Prediction tools that translate on their own (everything but ``default``).
 _PREDICTION_TOOLS = {
     "gv": ("gv",),
     "rv": ("rv",),
     "gv-rv": ("gv", "rv"),
 }
 
-#: Columns of the coordinates TSV emitted next to the predicted-protein FASTA.
 COORDS_COLUMNS = ["protein_id", "contig", "start", "end", "strand", "tool"]
 
 
@@ -85,7 +82,6 @@ def predict_proteins(nt_fasta: str, tool: str, faa_out: str, coords_out: str) ->
             genes = finder.find_genes(str(record.seq))
             for index, gene in enumerate(genes, start=1):
                 protein_id = f"{record.id}__{tool}__{index}"
-                # Drop the trailing stop ("*"), which BLAST/DIAMOND reject.
                 faa.write(f">{protein_id}\n{gene.translate(include_stop=False)}\n")
                 strand = "+" if gene.strand >= 0 else "-"
                 coords.write(
@@ -123,8 +119,6 @@ def cluster_proteins(faa_in: str, faa_out: str, threads: int) -> None:
         f"-c 1.0 -aL 1.0 -aS 1.0 -d 0 -M 0 -T {int(threads)}"
     )
     logger.debug(f"cd-hit command: {command}")
-    # capture rather than discard: on failure check=True raises with cd-hit's
-    # own message attached.
     subprocess.run(
         shlex.split(command),
         stdin=subprocess.DEVNULL,
@@ -218,8 +212,8 @@ def traceback(blastp_result: str, coords_tsv: str, out_blastx: str) -> None:
     with ``qseqid`` set to the source contig and ``qstart``/``qend`` mapped to
     nucleotide coordinates.
 
-    Hits whose protein id is absent from ``coords_tsv`` are dropped (with a
-    warning), so a partially-missing map never corrupts downstream coordinates.
+    Hits whose protein id is absent from ``coords_tsv`` are dropped with a
+    warning.
     """
     coords = pd.read_csv(coords_tsv, sep="\t").drop_duplicates(subset=["protein_id"])
     coord_map = {

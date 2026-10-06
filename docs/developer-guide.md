@@ -26,11 +26,12 @@ communicate through files on disk whose names accrete suffixes (`.rn.fmt`,
 | `get_length.py` | `GetLength` — the `<id>\t<length>` index bedtools slop needs. |
 | `compare_results.py` | `CompareResults` — host-bait filtering. |
 | `get_taxonomy.py` | `GetTaxonomy` / `GetFinalTaxonomy` / `GetCleanedTaxonomy`. |
-| `tag_elements.py` | `TagElements` — overlap flags + `Average_pident`. |
+| `tag_elements.py` | `TagElements` — overlap flags + `average_pident`. |
 | `overlap.py` | `FilterOverlap` — overlap resolution strategies. |
 | `gff.py` | `WriteGFF3`. |
 | `get_databases.py` | `GetDatabases` — the `get-databases` implementation. |
 | `taxon_exclusion.py` | Taxonomy expansion so `--exclude-taxon` can drop a branch before it is downloaded. |
+| `lineage.py` | The `Taxonomy` column: format, parse, and the family/genus fallback to the whole lineage. |
 | `taxon_split.py` | `plan_split` — one download per family/genus, plus the subtrees that rank cannot reach. |
 | `progress.py` | Terminal progress reporting + download retry/stall detection. |
 | `normalization.py` | `standardize_protein` — per-target protein-name cleaning. |

@@ -29,8 +29,6 @@ def test_remove_short_sequences_keeps_equal_to_cutoff(fasta_factory):
 
 
 def test_mask_clean_removes_soft_masked_sequences(fasta_factory):
-    # lowercase bases + N count as masked; the fully-lowercase record is 100%
-    # masked and must be dropped at the default 50% threshold.
     fasta = fasta_factory(
         "eves.fasta",
         {"clean": "ACGTACGTAC", "masked": "acgtacgtac"},
@@ -43,7 +41,6 @@ def test_mask_clean_removes_soft_masked_sequences(fasta_factory):
 
 
 def test_mask_clean_threshold_is_inclusive(fasta_factory):
-    # 5/10 lowercase == exactly 50%, which is <= threshold -> kept.
     fasta = fasta_factory("eves.fasta", {"half": "ACGTAacgta"})
 
     MaskClean(str(fasta), m_per=50)

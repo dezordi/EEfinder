@@ -3,8 +3,6 @@
 from __future__ import annotations
 from Bio import SeqIO
 
-#: Bases counted as "masked" when deciding whether an EE sits in a repetitive
-#: region: soft-masked (lowercase) bases plus ambiguous ``N``/``n``.
 _MASKED_BASES = ("a", "t", "c", "g", "n", "N")
 
 

@@ -133,7 +133,6 @@ class ScreeningPipeline(Stage):
         self.index_databases = index_databases
         self.removetmp = removetmp
 
-    # -- the stage sequence ------------------------------------------------
     def _execute(self):
         paths = self.paths
         step_infos: "list[StepInfo]" = []
@@ -265,7 +264,6 @@ class ScreeningPipeline(Stage):
         )
         return outputs, "Ran every screening stage and published the outputs."
 
-    # -- finalisation ------------------------------------------------------
     def _publish(self, merged, processed, flanked) -> None:
         """Rename the stage outputs to their published ``PREFIX.EEs.*`` names."""
         paths = self.paths
@@ -287,9 +285,8 @@ class ScreeningPipeline(Stage):
     def _archive(self) -> None:
         """Archive or delete every file in the output directory that is not published.
 
-        Defined as the complement of the published outputs rather than as a
-        list of intermediates, so the prediction-based translation methods'
-        side files are covered without naming them.
+        Defined as the complement of the published outputs, so the
+        translation methods' side files are covered without naming them.
         """
         paths = self.paths
         published = set(paths.final_outputs())

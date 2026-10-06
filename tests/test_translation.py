@@ -25,7 +25,6 @@ def _module_available(name: str) -> bool:
 
 PYRODIGAL = _module_available("pyrodigal_gv") and _module_available("pyrodigal_rv")
 
-#: A diverse peptide (blastp SEG will not mask it) and its 1-codon-per-aa ORF.
 _AA2CODON = {
     "A": "GCT",
     "R": "CGT",
@@ -58,25 +57,16 @@ def _revcomp(seq: str) -> str:
     return seq.translate(str.maketrans("ACGT", "TGCA"))[::-1]
 
 
-# --------------------------------------------------------------------------
-# Pure coordinate logic
-# --------------------------------------------------------------------------
-
-
 def test_aa_to_genomic_plus_strand():
-    # aa 1..10 of a CDS beginning at 100 -> nt 100..129 (ascending).
     assert translation._aa_to_genomic(100, 300, "+", 1, 10) == (100, 129)
     assert translation._aa_to_genomic(100, 300, "+", 5, 8) == (112, 123)
-    # Overrun is clamped to the CDS end.
     assert translation._aa_to_genomic(100, 129, "+", 1, 99) == (100, 129)
 
 
 def test_aa_to_genomic_minus_strand():
-    # Minus strand counts down from `end`; emitted qstart > qend (blastx neg).
     qstart, qend = translation._aa_to_genomic(500, 800, "-", 1, 10)
     assert qstart == 800 and qend == 771
     assert qstart > qend
-    # A hit deeper into the protein moves toward `begin`.
     assert translation._aa_to_genomic(500, 800, "-", 5, 8) == (788, 777)
 
 
@@ -87,29 +77,22 @@ def test_traceback_rewrites_query_coordinates(tmp_path):
         "p1\tc1\t100\t300\t+\tgv\n"
         "p2\tc1\t500\t800\t-\tgv\n"
     )
-    # outfmt6: qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore
     blastp = tmp_path / "hits.blastp"
     blastp.write_text(
         "p1\trefA\t95.0\t10\t0\t0\t1\t10\t1\t10\t1e-20\t80.0\n"
         "p2\trefB\t90.0\t10\t0\t0\t1\t10\t1\t10\t1e-18\t70.0\n"
-        "pX\trefC\t99.0\t10\t0\t0\t1\t10\t1\t10\t1e-30\t99.0\n"  # missing -> dropped
+        "pX\trefC\t99.0\t10\t0\t0\t1\t10\t1\t10\t1e-30\t99.0\n"
     )
     out = tmp_path / "out.blastx"
     translation.traceback(str(blastp), str(coords), str(out))
 
     result = pd.read_csv(out, sep="\t", header=None, names=OUTFMT6_COLUMNS)
-    assert list(result["qseqid"]) == ["c1", "c1"]  # pX dropped, contig substituted
+    assert list(result["qseqid"]) == ["c1", "c1"]
     p1 = result.iloc[0]
-    assert (int(p1.qstart), int(p1.qend)) == (100, 129)  # plus
+    assert (int(p1.qstart), int(p1.qend)) == (100, 129)
     p2 = result.iloc[1]
-    assert (int(p2.qstart), int(p2.qend)) == (800, 771)  # minus (qstart > qend)
-    # Non-coordinate columns are carried through unchanged.
+    assert (int(p2.qstart), int(p2.qend)) == (800, 771)
     assert float(p1.pident) == 95.0 and float(p2.bitscore) == 70.0
-
-
-# --------------------------------------------------------------------------
-# Dispatch: one translation_method controls the backend
-# --------------------------------------------------------------------------
 
 
 def test_similarity_search_default_uses_blastx(monkeypatch):
@@ -145,11 +128,6 @@ def test_similarity_search_prediction_methods_route_to_predicted(monkeypatch, me
     assert calls.get("predicted") == method and "blastx" not in calls
 
 
-# --------------------------------------------------------------------------
-# Real prediction / alignment (skipped without the tools)
-# --------------------------------------------------------------------------
-
-
 @pytest.mark.skipif(not PYRODIGAL, reason="requires pyrodigal-gv and pyrodigal-rv")
 @pytest.mark.parametrize("tool", ["gv", "rv"])
 def test_predict_proteins_writes_faa_and_coords(tmp_path, tool):
@@ -159,7 +137,7 @@ def test_predict_proteins_writes_faa_and_coords(tmp_path, tool):
     coords = tmp_path / "p.tsv"
     n = translation.predict_proteins(str(genome), tool, str(faa), str(coords))
     assert n >= 1
-    assert "*" not in faa.read_text()  # trailing stop stripped
+    assert "*" not in faa.read_text()
     df = pd.read_csv(coords, sep="\t")
     assert list(df.columns) == translation.COORDS_COLUMNS
     row = df.iloc[0]
@@ -179,9 +157,8 @@ def test_predict_and_cluster_gv_rv_dedups(tmp_path):
     combined = tmp_path / "genome.fa.pred.faa"
     n_before = sum(1 for line in combined.open() if line.startswith(">"))
     n_after = sum(1 for line in open(faa) if line.startswith(">"))
-    assert n_before == 2  # gv + rv predicted the same protein
-    assert n_after == 1  # cd-hit collapsed the identical pair
-    # The combined coords TSV keeps both tools' entries with identical coords.
+    assert n_before == 2
+    assert n_after == 1
     df = pd.read_csv(coords, sep="\t")
     assert set(df["tool"]) == {"gv", "rv"}
     assert df["start"].nunique() == 1 and df["end"].nunique() == 1
@@ -197,7 +174,6 @@ def test_run_predicted_search_maps_back_to_nucleotides(tmp_path, strand):
     genome = tmp_path / "genome.fa"
     genome.write_text(f">contig1\n{contig_seq}\n")
 
-    # Protein DB = the reference peptide itself, so blastp finds the predicted ORF.
     db = tmp_path / "db.faa"
     db.write_text(f">ref\n{PEPTIDE}\n")
     subprocess.run(
@@ -212,10 +188,10 @@ def test_run_predicted_search_maps_back_to_nucleotides(tmp_path, strand):
     hits = pd.read_csv(out, sep="\t", header=None, names=OUTFMT6_COLUMNS)
     assert len(hits) >= 1
     hit = hits.iloc[0]
-    assert hit.qseqid == "contig1"  # protein id mapped back to the contig
+    assert hit.qseqid == "contig1"
     lo, hi = sorted((int(hit.qstart), int(hit.qend)))
-    assert 61 <= lo and hi <= len(contig_seq)  # within the ORF region on the contig
+    assert 61 <= lo and hi <= len(contig_seq)
     if strand == "plus":
         assert int(hit.qstart) < int(hit.qend)
     else:
-        assert int(hit.qstart) > int(hit.qend)  # blastx neg convention
+        assert int(hit.qstart) > int(hit.qend)

@@ -87,6 +87,7 @@ eefinder get-databases host -tx "Aedes aegypti" -od db/ -pr host
 | `-p/--threads` | Threads for the `cd-hit` deduplication (default 1). The download itself is network-bound and unaffected. |
 | `--refseq/--all-sequences` | Restrict to RefSeq (default) or fetch everything. |
 | `--exclude-taxon` | Leave a branch of the taxonomy out of the download entirely; repeatable. Defaults to SARS-CoV-2 for `virus`. See [Excluding a virus from the download](#excluding-a-virus-from-the-download). |
+| `--include-unranked/--skip-unranked` | Also download the subtrees with no taxon at `--split-level`, instead of only reporting them. Their lineage still distinguishes them. default = skip. Not on `host`. |
 | `--split-level` | Split the download into one request per `family` (default) or `genus`, instead of one request for the whole taxon. `none` restores the single request. Subtrees with no taxon at that rank are skipped and logged. Not on `host`. |
 | `--cluster/--no-cluster` | Collapse 100%-identical / 100%-coverage duplicate proteins with `cd-hit` before writing the database (on by default). |
 | `--released-before` | Only include data released on or before this date (`YYYY-MM-DD`), so a build can be reproduced later. |
@@ -238,6 +239,14 @@ listed with `"reason": "no records in NCBI"`, which is why a whole-virus build
 reports **380 packages merged, not 427**. The run also says how many packages
 held no proteins, so the difference is never silent.
 
+By default only existent taxa (family or genus) are reported. `--include-unranked`
+downloads them as well: their full lineage still tells them apart, so including
+them does not cluster unclassified viruses together.
+
+```bash
+eefinder get-databases virus -od db/ --include-unranked
+```
+
 `--split-level` composes with `--exclude-taxon`: the split is planned first, and
 an excluded branch is pruned out of whichever split taxon contains it.
 
@@ -371,14 +380,38 @@ record in that case.
 ## The metadata CSV format
 
 `-mt` is the table that turns a protein accession into a taxonomic assignment.
-It must have a header row with these seven columns, which EEfinder matches **by
+It must have a header row with these five columns, which EEfinder matches **by
 name**:
 
 ```text
-Accession,Species,Genus,Family,Molecule_type,Protein,Host
-YP_009664712.1,Bas-Congo tibrovirus,Tibrovirus,Rhabdoviridae,ssRNA(-),N protein,Homo sapiens
-YP_009665181.1,Chick syncytial virus,Gammaretrovirus,Retroviridae,ssRNA-RT,polymerase,
+Accession,Taxonomy,Molecule_type,Protein,Host
+YP_009664712.1,r__Riboviria;k__Orthornavirae;p__Negarnaviricota;c__Monjiviricetes;o__Mononegavirales;f__Rhabdoviridae;g__Tibrovirus;s__Bas-Congo tibrovirus,ssRNA(-),N protein,Homo sapiens
+YP_009665181.1,r__Riboviria;k__Pararnavirae;p__Artverviricota;c__Revtraviricetes;o__Ortervirales;f__Retroviridae;g__Gammaretrovirus;s__Chick syncytial virus,ssRNA-RT,polymerase,
 ```
+
+(taxonomy-column)=
+### The `Taxonomy` column
+
+The whole lineage lives in one field, one slot per rank, always all eight:
+
+```text
+r__{realm};k__{kingdom};p__{phylum};c__{class};o__{order};f__{family};g__{genus};s__{species}
+```
+
+A rank NCBI has no taxon at is written `Unk` rather than left empty, so the
+field count never varies.
+
+Family- and genus-based options (`--merge_level`, `--target_families`,
+`--non_target_families`) read the rank they need out of this string. When that
+rank is `Unk`, the **whole lineage** is used as the taxon instead -- so two
+unclassified viruses from different orders are never merged into one element,
+which is what a single `Unknown` bucket used to do.
+
+The `taxonomy` column of a screening run is the same vocabulary but not
+necessarily the same shape: a merged element is assigned the lowest common
+ancestor of its hits, and the ranks it does not reach are left off instead of
+padded with `Unk` (see [the lineage of a merged
+element](output.md#the-lineage-of-a-merged-element)).
 
 The `Accession` values must match the first token of the corresponding FASTA
 headers in `-db` (e.g. `>YP_009664712.1 N protein [Bas-Congo tibrovirus]`).
@@ -386,8 +419,8 @@ headers in `-db` (e.g. `>YP_009664712.1 N protein [Bas-Congo tibrovirus]`).
 
 **Every protein in `-db` must have a row in `-mt`.** The run stops before the
 search if any does not, naming the offending accessions: the taxonomy join is a
-left join, so an undescribed protein would otherwise reach the output with empty
-`Family`/`Genus`/`Species`. Extra metadata rows are fine -- a database may be a
+left join, so an undescribed protein would otherwise reach the output with an
+empty lineage. Extra metadata rows are fine -- a database may be a
 subset of the table that describes it.
 
 The header is checked before the analysis starts, and again when the taxonomy is
@@ -395,10 +428,10 @@ assembled:
 
 | Header | Behaviour |
 |--------|-----------|
-| The seven columns, in the order above | The run proceeds silently. |
-| The seven columns, in a different order | A warning is logged and the columns are reordered in memory. The metadata file itself is never rewritten. |
-| Extra columns beyond the seven | A warning is logged and they are ignored. |
-| Any of the seven missing | The run stops with an error naming the missing column(s). |
+| The five columns, in the order above | The run proceeds silently. |
+| The five columns, in a different order | A warning is logged and the columns are reordered in memory. The metadata file itself is never rewritten. |
+| Extra columns beyond the five | A warning is logged and they are ignored. |
+| Any of the five missing | The run stops with an error naming the missing column(s). |
 
 ```{note}
 The names must be spelled exactly as above — `Molecule_type`, not
@@ -423,7 +456,12 @@ rebuilds it from the downloaded `protein.faa` headers joined with the datasets
 
 ## Deduplication (`--cluster`)
 
-Before the metadata CSV is built, `get-databases` collapses **exact duplicate**
+Each downloaded package (family or genus) is deduplicated **on its own, before the packages are
+merged**, so every `cd-hit` run stays small instead of one run over the whole
+database. The partitions are processed one at a time; the parallelism comes from
+`cd-hit` itself, via `-p/--threads`.
+
+`get-databases` collapses **exact duplicate**
 proteins with `cd-hit` at 100% identity **and** 100% coverage
 (`-c 1.0 -aL 1.0 -aS 1.0`) — so only sequences that are identical over their
 entire length are merged to a single representative. This is a lossless
@@ -459,13 +497,24 @@ final taxonomy table far easier to read and aggregate). Every target shares a
   bare `CDS`/`ORF` directive are dropped from both the CSV and the FASTA);
 - the leading letter is capitalised (`nucleoprotein (N)` → `Nucleoprotein (N)`).
 
-For `virus`, canonical names from the bundled map
-(`eefinder/data/viral_proteins.tsv`) are additionally applied, collapsing
-synonyms per `Molecule_type` scope — e.g. every RdRp spelling (including compound
-names like `P2-RdRp` or `CP/RdRp fusion`) → `RdRp`; the various Capsid spellings
-→ `Capsid Protein`. `bacteria` has no name map yet, so it gets the generic
-cleaning only; `host` is not standardised. The map is a first draft meant to be
-extended — see `eefinder/data/README.md`.
+For `virus`, the rules in `eefinder/data/protein_rules.yaml` are additionally
+applied. They hold three kinds of adjustment:
+
+- **typos** — whole-word spelling corrections, applied everywhere;
+- **rewrites** — regex fixes to the *shape* of a name, such as dropping the
+  redundant `protein` of `ORF3 protein` or the `unknown protein` tail of
+  `14 kDa protein unknown protein`;
+- **proteins** — synonym → canonical name, e.g. every RdRp spelling (including
+  compound names like `P2-RdRp` or `CP/RdRp fusion`) → `RdRp`.
+
+A synonym rule is scoped by `Molecule_type` **and** by taxon, so it never
+rewrites proteins of another genome group, and a family that names a protein
+against its group's convention can override the group-wide rule. `bacteria` gets
+the generic cleaning only; `host` is not standardised.
+
+The rules are a first draft meant to be extended, and adding a term never
+requires a code change — `eefinder/data/README.md` documents the file, its
+scopes and how the competing rules are ranked.
 
 ## The `get-databases` run log
 

@@ -42,9 +42,6 @@ def update_expected(request) -> bool:
     return bool(request.config.getoption("--update-test"))
 
 
-# --------------------------------------------------------------------------- #
-# Paths to the committed example inputs (used by the integration tests).
-# --------------------------------------------------------------------------- #
 @pytest.fixture(scope="session")
 def genome_file() -> Path:
     return TEST_FILES / "Ae_aeg_Aag2_ctg_1913.fasta"
@@ -76,9 +73,6 @@ def expected_results() -> Path:
     return TEST_FILES / "expected_results"
 
 
-# --------------------------------------------------------------------------- #
-# Small synthetic helpers for the unit tests.
-# --------------------------------------------------------------------------- #
 def write_fasta(path: Path, records: dict[str, str]) -> Path:
     """Write ``{header: sequence}`` pairs to a FASTA file and return the path."""
     with open(path, "w") as handle:
@@ -113,7 +107,6 @@ def blast_outfmt6(tmp_path) -> Path:
     * ``ctg3`` is shorter than 33 aa -> removed by the length filter.
     """
     rows = [
-        # qseqid sseqid       pident len mm go qstart qend sstart send evalue  bits
         [
             "ctg1",
             "PROT_A",
@@ -182,9 +175,9 @@ def blast_outfmt6(tmp_path) -> Path:
 def taxonomy_csv(tmp_path) -> Path:
     """Metadata CSV mirroring the schema of ``test_files/virus_subset.csv``."""
     content = textwrap.dedent("""\
-        Accession,Species,Genus,Family,Molecule_type,Protein,Host
-        PROT_A,Species alpha,Genusalpha,Familyalpha,ssRNA(+),polyprotein,Aedes
-        PROT_C,Species gamma,Genusgamma,Familygamma,ssRNA(-),glycoprotein,Culex
+        Accession,Taxonomy,Molecule_type,Protein,Host
+        PROT_A,r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__Familyalpha;g__Genusalpha;s__Species alpha,ssRNA(+),polyprotein,Aedes
+        PROT_C,r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__Familygamma;g__Genusgamma;s__Species gamma,ssRNA(-),glycoprotein,Culex
         """)
     path = tmp_path / "metadata.csv"
     path.write_text(content)

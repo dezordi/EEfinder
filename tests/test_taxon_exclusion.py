@@ -15,7 +15,6 @@ from eefinder.taxon_exclusion import (
     summarize_taxa,
 )
 
-# A small tree:  1 -> 10 -> {100, 200}, 100 -> {1000, 2000}
 TREE = {
     1: {"name": "Root", "parents": [], "children": [10]},
     10: {"name": "Mid", "parents": [1], "children": [100, 200]},
@@ -98,7 +97,6 @@ def test_no_exclusions_returns_the_root_untouched(monkeypatch):
 def test_excluding_a_leaf_keeps_its_siblings(monkeypatch):
     _fake_datasets(monkeypatch)
     result = expand_taxon_excluding("10", ["1000"])
-    # 10 -> {100, 200}; 100 -> {1000, 2000}. Dropping 1000 keeps 200 and 2000.
     assert set(result.taxa) == {200, 2000}
     assert result.pruned
     assert [node.tax_id for node in result.excluded] == [1000]
@@ -146,7 +144,6 @@ def test_lookups_are_cached_per_expansion(monkeypatch):
     calls = []
     _fake_datasets(monkeypatch, calls)
     expand_taxon_excluding("10", ["1000", "2000"])
-    # Each node is fetched at most once even though both exclusions walk 10->100.
     flat = [item for call in calls for item in call]
     assert len(flat) == len(set(flat))
 

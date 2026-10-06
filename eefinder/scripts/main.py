@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-# -*- coding: utf-8 -*-
 """Console entrypoint: the top-level ``eefinder`` command group."""
 
 import click

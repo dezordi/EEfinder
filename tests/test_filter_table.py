@@ -12,8 +12,6 @@ def test_filter_table_ee_outputs(blast_outfmt6, tmp_path):
 
     filtred = pd.read_csv(f"{blast_outfmt6}.filtred", sep="\t")
 
-    # ctg3 (length 20 < 33) is dropped, and the two overlapping ctg1 hits in the
-    # same 100 nt window collapse to the higher-bitscore one (PROT_A).
     assert set(filtred["qseqid"]) == {"ctg1", "ctg2"}
     assert "PROT_B" not in set(filtred["sseqid"])
     assert "PROT_D" not in set(filtred["sseqid"])
@@ -25,7 +23,6 @@ def test_filter_table_negative_strand_is_swapped(blast_outfmt6, tmp_path):
     filtred = pd.read_csv(f"{blast_outfmt6}.filtred", sep="\t")
     ctg2 = filtred[filtred["qseqid"] == "ctg2"].iloc[0]
 
-    # Original hit was qstart=500 > qend=260 -> negative sense, coords swapped.
     assert ctg2["sense"] == "neg"
     assert ctg2["qstart"] == 260
     assert ctg2["qend"] == 500
@@ -56,5 +53,4 @@ def test_filter_table_host_tag_uses_qseqid_as_bed_name(blast_outfmt6, tmp_path):
 
     filtred = pd.read_csv(f"{blast_outfmt6}.filtred", sep="\t")
     assert (filtred["tag"] == "HOST").all()
-    # For HOST hits the bed_name is simply the query id, not coordinate-tagged.
     assert (filtred["bed_name"] == filtred["qseqid"]).all()

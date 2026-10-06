@@ -87,7 +87,7 @@ is applied and `-mp` has no effect.
 
 Names the prefix EEfinder uses for output files and element names. Sequence
 headers and GFF3 `ID`s are formatted as `PREFIX/CONTIG:START-END` (e.g.
-`Ae_aeg_Aag2_ctg_1913/ctg_1913:1754-2689`); the taxonomy table's `Element-ID`
+`Ae_aeg_Aag2_ctg_1913/ctg_1913:1754-2689`); the taxonomy table's `element_id`
 column carries the same name without the `PREFIX/` part. Combining the species
 and assembly names works well, e.g. **Ae_aeg_Aag2** for *Aedes aegypti* / Aag2.
 

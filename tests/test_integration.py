@@ -25,6 +25,7 @@ import subprocess
 from pathlib import Path
 import pandas as pd
 import pytest
+from eefinder.lineage import rank_name
 from eefinder.stages import ScreeningPaths
 from conftest import binaries_available
 
@@ -36,8 +37,6 @@ REQUIRED_BINARIES = ("eefinder", "blastx", "makeblastdb", "bedtools")
 
 PREFIX = "Ae_aeg_Aag2_ctg_1913"
 
-#: The four user-facing outputs compared against ``test_files/expected_results``
-#: (temporary files and the timestamped run log are intentionally ignored).
 MAIN_OUTPUTS = (
     f"{PREFIX}.EEs.fa",
     f"{PREFIX}.EEs.tax.tsv",
@@ -54,18 +53,16 @@ pytestmark = [
 ]
 
 EXPECTED_TAX_COLUMNS = {
-    "Element-ID",
-    "Sense",
-    "Protein-IDs",
-    "Protein-Products",
-    "Molecule_type",
-    "Family",
-    "Genus",
-    "Species",
-    "Host",
-    "Overlaped_Element_ID",
+    "element_id",
+    "sense",
+    "protein_ids",
+    "protein_products",
+    "molecule_type",
+    "taxonomy",
+    "host",
+    "overlaped_element_id",
     "tag",
-    "Average_pident",
+    "average_pident",
 }
 
 
@@ -112,8 +109,8 @@ def _run_eefinder(outdir, genome, db, meta, baits, *extra, merge_limit=100):
 
 
 def _element_ids(outdir, name=f"{PREFIX}.EEs.tax.tsv"):
-    """Return the set of ``Element-ID`` values from a taxonomy table."""
-    return set(pd.read_csv(outdir / name, sep="\t")["Element-ID"])
+    """Return the set of ``element_id`` values from a taxonomy table."""
+    return set(pd.read_csv(outdir / name, sep="\t")["element_id"])
 
 
 def test_matches_expected_results(
@@ -148,11 +145,9 @@ def test_matches_expected_results(
             produced, expected / name, shallow=False
         ), f"{name} differs from test_files/expected_results/default/{name}"
 
-    # Guard against a corrupted golden set.
     tax = pd.read_csv(outdir / f"{PREFIX}.EEs.tax.tsv", sep="\t")
     assert EXPECTED_TAX_COLUMNS.issubset(tax.columns)
 
-    # Without --removetmp the intermediates are archived and the run log written.
     assert (outdir / "tmp_files").is_dir()
     assert (outdir / "eefinder.log").is_file()
 
@@ -201,11 +196,9 @@ def test_matches_expected_results_gv_rv(
             produced, expected / name, shallow=False
         ), f"{name} differs from test_files/expected_results/gv-rv/{name}"
 
-    # Guard against a corrupted golden set.
     tax = pd.read_csv(outdir / f"{PREFIX}.EEs.tax.tsv", sep="\t")
     assert EXPECTED_TAX_COLUMNS.issubset(tax.columns)
-    # gv-rv also traces hits back to nucleotide coordinates on the contig.
-    assert all(re.search(r":\d+-\d+$", str(eid)) for eid in tax["Element-ID"])
+    assert all(re.search(r":\d+-\d+$", str(eid)) for eid in tax["element_id"])
 
 
 @pytest.mark.skipif(
@@ -217,7 +210,7 @@ def test_translation_method_gv_drives_both_searches(
 ):
     """``-tm gv`` predicts proteins for BOTH the main and the host-bait search.
 
-    The output keeps the same schema (nucleotide ``Element-ID``s), and a
+    The output keeps the same schema (nucleotide ``element_id``s), and a
     predicted-protein coordinates TSV exists for each of the two searches —
     proving the translation method is applied consistently, not just to the main
     step.
@@ -227,8 +220,7 @@ def test_translation_method_gv_drives_both_searches(
 
     tax = pd.read_csv(outdir / f"{PREFIX}.EEs.tax.tsv", sep="\t")
     assert EXPECTED_TAX_COLUMNS.issubset(tax.columns)
-    # Element-IDs are traced back to nucleotide coordinates on the contig.
-    assert all(re.search(r":\d+-\d+$", str(eid)) for eid in tax["Element-ID"])
+    assert all(re.search(r":\d+-\d+$", str(eid)) for eid in tax["element_id"])
 
     tmp = outdir / "tmp_files"
     paths = ScreeningPaths(outdir=str(tmp), prefix=PREFIX)
@@ -250,8 +242,6 @@ def test_clean_masked_is_subset_of_full_run(
     assert cleaned_fa.is_file()
     assert cleaned_tax.is_file()
 
-    # One taxonomy row per cleaned record, matching the documented schema
-    # (regression guard: cleaned IDs once mismatched the table and it was empty).
     tax = pd.read_csv(cleaned_tax, sep="\t")
     assert EXPECTED_TAX_COLUMNS.issubset(tax.columns)
     n_records = sum(
@@ -260,7 +250,6 @@ def test_clean_masked_is_subset_of_full_run(
     assert n_records > 0
     assert len(tax) == n_records
 
-    # The cleaned elements must be a subset of the full run's elements.
     assert _element_ids(outdir, cleaned_tax.name) <= _element_ids(outdir)
 
 
@@ -280,9 +269,7 @@ def test_merge_limit_controls_merging(
     ids_strict = _element_ids(strict)
     ids_loose = _element_ids(loose)
 
-    # Merging only ever joins elements, so a looser limit yields fewer of them.
     assert len(ids_loose) < len(ids_strict)
-    # The adjacent same-taxon pair (~20 nt apart) merges only at the looser limit.
     merged = "ctg_1913:102863-104096"
     assert merged in ids_loose
     assert merged not in ids_strict
@@ -318,17 +305,14 @@ def test_overlap_longest_filters_and_preserves_removed(
     kept_ids = _element_ids(longest)
     assert kept_ids <= full_ids
 
-    # Filtered-out elements are preserved under tmp_outputs/ rather than deleted.
     removed_tax = longest / "tmp_outputs" / f"{PREFIX}.EEs.removed.tax.tsv"
     removed_fa = longest / "tmp_outputs" / f"{PREFIX}.EEs.removed.fa"
     assert removed_tax.is_file()
     assert removed_fa.is_file()
 
-    removed_ids = set(pd.read_csv(removed_tax, sep="\t")["Element-ID"])
-    # Kept and removed partition the unfiltered run, with nothing lost.
+    removed_ids = set(pd.read_csv(removed_tax, sep="\t")["element_id"])
     assert kept_ids.isdisjoint(removed_ids)
     assert kept_ids | removed_ids == full_ids
-    # The test data contains at least one resolvable overlap.
     assert removed_ids
 
 
@@ -365,7 +349,6 @@ def test_overlap_targets_requires_exactly_one_family_list(
     tmp_path, genome_file, virus_db, virus_metadata, filter_db
 ):
     """``--overlap targets`` needs exactly one of the two family lists."""
-    # Neither list -> error.
     neither = subprocess.run(
         _targets_cmd(
             tmp_path / "neither", genome_file, virus_db, virus_metadata, filter_db
@@ -376,7 +359,6 @@ def test_overlap_targets_requires_exactly_one_family_list(
     assert neither.returncode != 0
     assert "target_families" in (neither.stdout + neither.stderr)
 
-    # Both lists -> error.
     both = subprocess.run(
         _targets_cmd(
             tmp_path / "both",
@@ -407,12 +389,9 @@ def test_overlap_targets_non_target_families_drops_that_family(
     overlaped = keep_tax[keep_tax["tag"] == "overlaped"]
     if overlaped.empty:
         pytest.skip("no overlaping elements in the example run")
-    dropped_family = overlaped["Family"].iloc[0]
-    # Element-IDs of the overlaped members of that family (a cluster always mixes
-    # families, so none are shielded by the "never wipe" rule).
-    dropped_ids = set(
-        overlaped.loc[overlaped["Family"] == dropped_family, "Element-ID"]
-    )
+    families = overlaped["taxonomy"].map(lambda t: rank_name(t, "family"))
+    dropped_family = families.iloc[0]
+    dropped_ids = set(overlaped.loc[families == dropped_family, "element_id"])
 
     ntf = tmp_path / "ntf"
     _run_eefinder(
@@ -430,12 +409,10 @@ def test_overlap_targets_non_target_families_drops_that_family(
     kept_ids = _element_ids(ntf)
     removed_tax = ntf / "tmp_outputs" / f"{PREFIX}.EEs.removed.tax.tsv"
     assert removed_tax.is_file()
-    removed_ids = set(pd.read_csv(removed_tax, sep="\t")["Element-ID"])
+    removed_ids = set(pd.read_csv(removed_tax, sep="\t")["element_id"])
 
-    # Every overlaped member of the dropped family is filtered out and preserved.
     assert dropped_ids <= removed_ids
     assert kept_ids.isdisjoint(dropped_ids)
-    # Kept and removed still partition the unfiltered run.
     assert kept_ids.isdisjoint(removed_ids)
     assert kept_ids | removed_ids == _element_ids(keep)
 
@@ -448,5 +425,4 @@ def test_removetmp_removes_intermediate_files(
     _run_eefinder(outdir, genome_file, virus_db, virus_metadata, filter_db, "-rm")
 
     assert not (outdir / "tmp_files").exists()
-    # The main outputs are still produced.
     assert (outdir / f"{PREFIX}.EEs.fa").is_file()

@@ -30,7 +30,7 @@ class MergeFragmentedElementsOutputs(StageOutputs):
     ee_elements : str
         Merged element sequences -- published as ``PREFIX.EEs.fa``.
     ee_elements_tax : str
-        Per-element taxonomy table, with ``Average_pident`` and the overlap
+        Per-element taxonomy table, with ``average_pident`` and the overlap
         tags -- published as ``PREFIX.EEs.tax.tsv``.
     """
 
@@ -116,7 +116,7 @@ class MergeFragmentedElements(Stage):
 
         GetFasta(self.genome, paths.merge_elements_bed, paths.ee_elements)
 
-        logger.debug("GetFinalTaxonomy + TagElements (Average_pident, overlap tags)")
+        logger.debug("GetFinalTaxonomy + TagElements (average_pident, overlap tags)")
         GetFinalTaxonomy(paths.merge_elements_bed, self.taxonomy_signature)
         self._rename(f"{paths.merge_elements_bed}.fa.tax", paths.ee_elements_tax)
         TagElements(paths.ee_elements_tax)

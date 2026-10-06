@@ -16,7 +16,6 @@ from Bio.Blast.Applications import NcbiblastxCommandline
 from eefinder import translation
 from eefinder.log import logger
 
-#: E-value cutoff shared by both search backends.
 EVALUE_CUTOFF = 0.00001
 
 

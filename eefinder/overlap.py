@@ -24,8 +24,8 @@ to a ``tmp_outputs/`` directory so they remain available for inspection.
 from __future__ import annotations
 import re
 import pandas as pd
+from eefinder.lineage import rank_name
 
-#: Accepted values for the ``--overlap`` option.
 OVERLAP_STRATEGIES = ("keep", "longest", "targets")
 _OVERLAPED_TAG = "overlaped"
 
@@ -41,25 +41,25 @@ def _overlap_clusters(overlaped: pd.DataFrame) -> list[set[str]]:
     """Group overlaping elements into connected clusters.
 
     Two elements belong to the same cluster when one lists the other in its
-    ``Overlaped_Element_ID`` (transitively): the clusters are the connected
+    ``overlaped_element_id`` (transitively): the clusters are the connected
     components of the overlap graph, restricted to elements tagged ``overlaped``.
 
     Parameters
     ----------
     overlaped : pandas.DataFrame
-        The ``overlaped`` rows of a taxonomy table (``Element-ID`` and
-        ``Overlaped_Element_ID`` columns).
+        The ``overlaped`` rows of a taxonomy table (``element_id`` and
+        ``overlaped_element_id`` columns).
 
     Returns
     -------
     list[set[str]]
-        One set of ``Element-ID``s per connected cluster.
+        One set of ``element_id``s per connected cluster.
     """
-    ids = set(overlaped["Element-ID"])
+    ids = set(overlaped["element_id"])
     adjacency: dict[str, set[str]] = {eid: set() for eid in ids}
     for _, row in overlaped.iterrows():
-        eid = row["Element-ID"]
-        for partner in str(row["Overlaped_Element_ID"]).split(","):
+        eid = row["element_id"]
+        for partner in str(row["overlaped_element_id"]).split(","):
             if partner in ids:
                 adjacency[eid].add(partner)
                 adjacency[partner].add(eid)
@@ -88,7 +88,7 @@ def elements_to_remove(
     target_families: list[str],
     non_target_families: "list[str] | None" = None,
 ) -> set[str]:
-    """Return the ``Element-ID``s to drop for the given overlap strategy.
+    """Return the ``element_id``s to drop for the given overlap strategy.
 
     Only elements tagged ``overlaped`` are ever considered for removal; unique
     elements are always kept.
@@ -96,8 +96,8 @@ def elements_to_remove(
     Parameters
     ----------
     df : pandas.DataFrame
-        Taxonomy table (must have ``Element-ID``, ``Family``, ``tag`` and
-        ``Overlaped_Element_ID`` columns).
+        Taxonomy table (must have ``element_id``, ``taxonomy``, ``tag`` and
+        ``overlaped_element_id`` columns).
     strategy : str
         One of :data:`OVERLAP_STRATEGIES`.
     target_families : list[str]
@@ -111,7 +111,7 @@ def elements_to_remove(
     Returns
     -------
     set[str]
-        The ``Element-ID``s to remove.
+        The ``element_id``s to remove.
     """
     if strategy == "keep":
         return set()
@@ -121,22 +121,20 @@ def elements_to_remove(
     if strategy == "targets":
         targets = set(target_families)
         non_targets = set(non_target_families or [])
-        family_by_id = dict(zip(df["Element-ID"], df["Family"]))
+        family_by_id = {
+            element: rank_name(taxonomy, "family")
+            for element, taxonomy in zip(df["element_id"], df["taxonomy"])
+        }
         removed: set[str] = set()
         for cluster in _overlap_clusters(overlaped):
             families = {family_by_id.get(eid) for eid in cluster}
             if targets:
-                # Keep-list mode: resolve only clusters that contain a target
-                # family, dropping every non-target member; a cluster with no
-                # target member is left untouched (all kept).
                 if not (families & targets):
                     continue
                 removed.update(
                     eid for eid in cluster if family_by_id.get(eid) not in targets
                 )
             else:
-                # Drop-list mode: drop the listed families, but never wipe a
-                # cluster whose every member is a non-target family.
                 if families <= non_targets:
                     continue
                 removed.update(
@@ -145,14 +143,13 @@ def elements_to_remove(
         return removed
 
     if strategy == "longest":
-        length_by_id = {eid: _element_length(eid) for eid in df["Element-ID"]}
+        length_by_id = {eid: _element_length(eid) for eid in df["element_id"]}
         removed: set[str] = set()
         for _, row in overlaped.iterrows():
-            own_length = length_by_id[row["Element-ID"]]
-            partners = [p for p in str(row["Overlaped_Element_ID"]).split(",") if p]
-            # Drop this element if any element it overlaps is strictly longer.
+            own_length = length_by_id[row["element_id"]]
+            partners = [p for p in str(row["overlaped_element_id"]).split(",") if p]
             if any(length_by_id.get(p, 0) > own_length for p in partners):
-                removed.add(row["Element-ID"])
+                removed.add(row["element_id"])
         return removed
 
     raise ValueError(f"Unknown overlap strategy: {strategy!r}")
@@ -168,7 +165,7 @@ class FilterOverlap:
     Parameters
     ----------
     fasta_file : str
-        EE FASTA to filter in place (headers are ``{prefix}/{Element-ID}``).
+        EE FASTA to filter in place (headers are ``{prefix}/{element_id}``).
     tax_file : str
         Taxonomy TSV to filter in place.
     strategy : str
@@ -211,8 +208,8 @@ class FilterOverlap:
             df, self.strategy, self.target_families, self.non_target_families
         )
 
-        kept = df[~df["Element-ID"].isin(removed_ids)]
-        removed = df[df["Element-ID"].isin(removed_ids)]
+        kept = df[~df["element_id"].isin(removed_ids)]
+        removed = df[df["element_id"].isin(removed_ids)]
         kept.to_csv(self.tax_file, sep="\t", index=False)
         removed.to_csv(self.removed_tax, sep="\t", index=False)
 
@@ -226,7 +223,6 @@ class FilterOverlap:
         with open(self.fasta_file) as fasta_in:
             for line in fasta_in:
                 if line.startswith(">"):
-                    # Strip the "{prefix}/" so the header matches the Element-ID.
                     element_id = re.sub(r".*/", "", line[1:].rstrip("\n"))
                     bucket = removed_lines if element_id in removed_ids else kept_lines
                 bucket.append(line)

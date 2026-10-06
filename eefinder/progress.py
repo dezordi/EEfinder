@@ -20,28 +20,18 @@ import time
 import click
 from eefinder.log import logger
 
-#: Environment variable that suppresses every progress display.
 NO_PROGRESS_ENV = "EEFINDER_NO_PROGRESS"
 
-#: How much of a mirrored subprocess's output is kept for error reporting.
 KEEP_CHARS = 4000
 
-#: Seconds of complete silence -- no new output, no growth of the output file --
-#: after which a download is treated as stalled rather than slow.
 DEFAULT_STALL_TIMEOUT = 180
 
-#: How many times a download is attempted before giving up.
 DEFAULT_ATTEMPTS = 3
 
-#: Seconds to wait before a retry (multiplied by the attempt number).
 RETRY_BACKOFF = 5
 
-#: Exit status used to report a stalled attempt (no real exit status exists).
 STALLED = -9
 
-#: Messages that mean retrying is pointless: the request itself is wrong, so the
-#: next attempt would fail identically. Everything else (dropped connections,
-#: server errors, hangs) is worth another try.
 PERMANENT_ERRORS = (
     "is not a recognized",
     "does not match any existing",
@@ -50,29 +40,18 @@ PERMANENT_ERRORS = (
     "no such file or directory",
 )
 
-#: Width every bar label is padded to, so the bars line up under each other.
 LABEL_WIDTH = 18
 
-#: How many times a bar is redrawn over the whole iteration.
 BAR_STEPS = 200
 
-#: Upper bound of one read from a child's pipe. Unbuffered binary reads return
-#: whatever is available rather than waiting for this many bytes.
 CHUNK_BYTES = 4096
 
-#: How often the loop wakes up to check whether the command has exited.
 POLL_INTERVAL = 0.2
 
-#: Grace period for collecting output still in flight once a command exits.
 DRAIN_SECONDS = 1.0
 
-#: How long the output artifact must stay unchanged before it is examined for
-#: completeness. Guards against inspecting a file that is still being written.
 ARTIFACT_SETTLE = 2.0
 
-#: How often to say that a quiet command is still being waited on. Silence is
-#: indistinguishable from a freeze otherwise, and the user cannot tell whether
-#: anything will ever happen.
 QUIET_NOTICE_INTERVAL = 20
 
 
@@ -83,17 +62,16 @@ def show_progress(stream=None) -> bool:
     stream = stream or sys.stderr
     try:
         return bool(stream.isatty())
-    except (AttributeError, ValueError):  # pragma: no cover - closed/odd streams
+    except (AttributeError, ValueError):
         return False
 
 
 def _reader(stream, sink: "queue.Queue") -> None:
     """Push a subprocess's output into ``sink`` as soon as any arrives.
 
-    The pipe is read **unbuffered and in binary**, because a buffered text read
-    of a fixed size blocks until that many characters exist: a tool that draws a
-    progress bar would then appear frozen mid-word (``Valida``) until enough
-    further output accumulated to fill the buffer.
+    The pipe is read **unbuffered and in binary**: a buffered read of a fixed
+    size blocks until that many characters exist, stalling a progress display
+    mid-word.
     """
     try:
         while True:
@@ -157,7 +135,7 @@ def run_streaming(
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        bufsize=0,  # binary and unbuffered: forward output the moment it arrives
+        bufsize=0,
         env=child_env,
     )
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -176,10 +154,6 @@ def run_streaming(
             chunk = chunks.get(timeout=POLL_INTERVAL)
         except queue.Empty:
             if process.poll() is not None:
-                # The command finished. Do not keep waiting for end-of-file: a
-                # background process it left behind can hold the write end of the
-                # pipe open indefinitely, and the run would hang after the tool
-                # had already printed everything and exited.
                 logger.debug("command exited; draining any remaining output")
                 tail = (tail + _drain(chunks, decoder, mirror))[-keep_chars:]
                 break
@@ -192,8 +166,6 @@ def run_streaming(
                 and now - last_activity >= ARTIFACT_SETTLE
                 and success_check()
             ):
-                # The command produced what was asked of it. Whether it ever
-                # returns is its own business.
                 logger.debug(
                     "the expected output is complete; stopping the command "
                     "instead of waiting for it to exit"
@@ -225,8 +197,6 @@ def run_streaming(
         if chunk is None:
             break
         last_activity = time.monotonic()
-        # Decode incrementally: a chunk boundary can fall inside a multi-byte
-        # character.
         text = decoder.decode(chunk)
         if not text:
             continue
@@ -299,11 +269,9 @@ def run_with_retries(
 ) -> "tuple[int, str]":
     """Run a command, retrying it when it fails or stalls.
 
-    NCBI transfers fail in two ways that both need the same answer: an error the
-    tool reports, and a hang it never reports at all. Both are retried, up to
-    ``attempts`` times, with a partial output discarded in between --- except for
-    failures that are permanent (:func:`is_permanent_error`), such as a
-    misspelled taxon, where retrying only delays the same message.
+    A reported error and an unreported hang are both retried, up to
+    ``attempts`` times, discarding the partial output in between. Permanent
+    failures (:func:`is_permanent_error`) are not retried.
 
     Parameters
     ----------
@@ -339,9 +307,6 @@ def run_with_retries(
         if attempt > 1:
             delay = RETRY_BACKOFF * (attempt - 1)
             if show_progress():
-                # The failed attempt left the cursor mid-line and the next one
-                # redraws over it; start the retry on a clean line so the warning
-                # below stays readable.
                 sys.stderr.write("\n")
                 sys.stderr.flush()
             logger.warning(
@@ -399,8 +364,6 @@ def progress_bar(iterable, label: str, length: "int | None" = None):
         length=length,
         file=sys.stderr,
         show_pos=True,
-        # A whole-RefSeq download iterates millions of records; redrawing the bar
-        # for each one costs more than the work being measured.
         update_min_steps=max(1, (length or 0) // BAR_STEPS),
     )
 

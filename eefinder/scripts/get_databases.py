@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-# -*- coding: utf-8 -*-
 """The ``eefinder get-databases`` command group.
 
 One subcommand per database: ``virus`` and ``bacteria`` produce a protein FASTA
@@ -138,6 +136,7 @@ def _run_get_databases(
     released_before=None,
     exclude_taxa=(),
     split_level=NO_SPLIT,
+    include_unranked=False,
     threads=1,
 ):
     """Check for the datasets binary and run :class:`GetDatabases`."""
@@ -185,6 +184,7 @@ def _run_get_databases(
             released_before=released_before,
             exclude_taxa=exclude_taxa,
             split_level=split_level,
+            include_unranked=include_unranked,
             threads=threads,
         )
     except Exception as err:
@@ -204,6 +204,14 @@ def get_databases():
 
 
 @get_databases.command(name="virus")
+@click.option(
+    "--include-unranked/--skip-unranked",
+    help="Also download the subtrees that have no taxon at --split-level. They "
+    "are skipped by default: with no family there is no family or genus to "
+    "assign. Their full lineage still tells them apart, so including them does "
+    "not lump them together. default = skip",
+    default=False,
+)
 @click.option(
     "--split-level",
     help="Split the download into one request per taxon at this rank instead of "
@@ -238,6 +246,7 @@ def get_databases():
 )
 def get_databases_virus(
     split_level,
+    include_unranked,
     outdir,
     prefix,
     threads,
@@ -271,10 +280,19 @@ def get_databases_virus(
         released_before=released_before,
         exclude_taxa=_resolve_exclusions(exclude_taxa, DEFAULT_VIRUS_EXCLUSIONS),
         split_level=split_level,
+        include_unranked=include_unranked,
     )
 
 
 @get_databases.command(name="bacteria")
+@click.option(
+    "--include-unranked/--skip-unranked",
+    help="Also download the subtrees that have no taxon at --split-level. They "
+    "are skipped by default: with no family there is no family or genus to "
+    "assign. Their full lineage still tells them apart, so including them does "
+    "not lump them together. default = skip",
+    default=False,
+)
 @click.option(
     "--split-level",
     help="Split the download into one request per taxon at this rank instead of "
@@ -310,6 +328,7 @@ def get_databases_virus(
 )
 def get_databases_bacteria(
     split_level,
+    include_unranked,
     outdir,
     prefix,
     threads,
@@ -343,6 +362,7 @@ def get_databases_bacteria(
         released_before=released_before,
         exclude_taxa=_resolve_exclusions(exclude_taxa),
         split_level=split_level,
+        include_unranked=include_unranked,
     )
 
 

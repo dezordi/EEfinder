@@ -15,15 +15,17 @@ def test_list_to_string():
 def _write_tax(path):
     pd.DataFrame(
         {
-            "Element-ID": ["ctg1:100-200", "ctg1:250-300", "ctg2:100-200"],
-            "Sense": ["pos", "pos", "pos"],
-            "Protein-IDs": ["P1|30.0", "P2|40.0 | P3|50.0", "P4|20.0"],
-            "Protein-Products": ["prot", "prot", "prot"],
-            "Molecule_type": ["ssRNA", "ssRNA", "ssRNA"],
-            "Family": ["FamA", "FamB", "FamC"],
-            "Genus": ["GenA", "GenB", "GenC"],
-            "Species": ["spA", "spB", "spC"],
-            "Host": ["h", "h", "h"],
+            "element_id": ["ctg1:100-200", "ctg1:250-300", "ctg2:100-200"],
+            "sense": ["pos", "pos", "pos"],
+            "protein_ids": ["P1|30.0", "P2|40.0;P3|50.0", "P4|20.0"],
+            "protein_products": ["prot", "prot", "prot"],
+            "molecule_type": ["ssRNA", "ssRNA", "ssRNA"],
+            "taxonomy": [
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__spA",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamB;g__GenB;s__spB",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamC;g__GenC;s__spC",
+            ],
+            "host": ["h", "h", "h"],
         }
     ).to_csv(path, sep="\t", index=False)
 
@@ -34,13 +36,11 @@ def test_tag_elements_flags_overlaps(tmp_path):
 
     TagElements(str(tax))
 
-    df = pd.read_csv(tax, sep="\t").set_index("Element-ID")
-    # The two ctg1 elements sit within 100 nt of each other with different
-    # families -> both flagged "overlaped"; the lone ctg2 element is "unique".
+    df = pd.read_csv(tax, sep="\t").set_index("element_id")
     assert df.loc["ctg1:100-200", "tag"] == "overlaped"
     assert df.loc["ctg1:250-300", "tag"] == "overlaped"
     assert df.loc["ctg2:100-200", "tag"] == "unique"
-    assert "ctg1:250-300" in df.loc["ctg1:100-200", "Overlaped_Element_ID"]
+    assert "ctg1:250-300" in df.loc["ctg1:100-200", "overlaped_element_id"]
 
 
 def test_tag_elements_average_pident(tmp_path):
@@ -49,7 +49,7 @@ def test_tag_elements_average_pident(tmp_path):
 
     TagElements(str(tax))
 
-    df = pd.read_csv(tax, sep="\t").set_index("Element-ID")
-    assert df.loc["ctg1:100-200", "Average_pident"] == 30.0
-    assert df.loc["ctg1:250-300", "Average_pident"] == 45.0  # mean(40.0, 50.0)
-    assert df.loc["ctg2:100-200", "Average_pident"] == 20.0
+    df = pd.read_csv(tax, sep="\t").set_index("element_id")
+    assert df.loc["ctg1:100-200", "average_pident"] == 30.0
+    assert df.loc["ctg1:250-300", "average_pident"] == 45.0
+    assert df.loc["ctg2:100-200", "average_pident"] == 20.0

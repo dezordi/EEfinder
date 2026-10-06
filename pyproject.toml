@@ -41,6 +41,7 @@ dependencies = [
     "biopython>=1.79,<1.86",  # Bio.Blast.Applications removed in 1.86
     "pandas>=1.4,<3",
     "numpy>=1.22,<3",
+    "pyyaml>=5.4",  # eefinder/data/protein_rules.yaml
 ]
 
 [project.optional-dependencies]

@@ -19,7 +19,6 @@ import numpy
 import pandas
 from eefinder.log import logger
 
-#: External binaries and the command used to query each one's version.
 _TOOL_COMMANDS = {
     "bedtools": "bedtools --version",
     "blast": "blastx -version",
@@ -27,7 +26,6 @@ _TOOL_COMMANDS = {
     "ncbi-datasets-cli": "datasets --version",
 }
 
-#: Order in which dependencies are reported in the run log.
 DEPENDENCY_NAMES = (
     "python",
     "numpy",
@@ -40,7 +38,6 @@ DEPENDENCY_NAMES = (
 
 _VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?)")
 
-# Status values for a dependency-version comparison.
 STATUS_OK = "ok"
 STATUS_MISMATCH = "mismatch"
 STATUS_NOT_FOUND = "not-found"
@@ -83,7 +80,7 @@ def collect_system_info() -> SystemInfo:
     """Gather the operating system and host context for the run log."""
     try:
         user = getpass.getuser()
-    except Exception:  # pragma: no cover - environment-dependent
+    except Exception:
         user = "unknown"
     return SystemInfo(
         operating_system=platform.platform(),

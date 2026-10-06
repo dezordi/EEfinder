@@ -6,26 +6,20 @@ https://github.com/the-sequence-ontology/specifications/blob/master/gff3.md
 
 from __future__ import annotations
 import pandas as pd
+from eefinder.get_taxonomy import PROTEIN_ID_SEPARATOR
+from eefinder.lineage import RANKS, rank_name
 
-#: Mandatory first line of a GFF3 file.
 GFF3_VERSION = "##gff-version 3"
 
-#: Column-3 feature type per analysis type. Endogenous elements are integrated
-#: foreign sequences, described with the parallel ``endogenous_viral_element``
-#: (EVE) / ``endogenous_bacterial_element`` terms (descriptive, not SO ids —
-#: GFF3 permits free text in column 3).
 FEATURE_TYPES = {
     "virus": "endogenous_viral_element",
     "bacteria": "endogenous_bacterial_element",
 }
 
-#: Analysis type assumed when none is given.
 DEFAULT_ANALYSIS = "virus"
 
-#: Map the pipeline's ``Sense`` values to GFF3 strand symbols.
 _STRAND = {"pos": "+", "neg": "-"}
 
-#: Characters that must be percent-encoded inside GFF3 column-9 values.
 _ATTRIBUTE_ESCAPES = {
     "%": "%25",
     ";": "%3B",
@@ -37,18 +31,17 @@ _ATTRIBUTE_ESCAPES = {
     "\r": "%0D",
 }
 
-#: (GFF3 attribute tag, taxonomy-table column) pairs written to column 9, in
-#: order. Reserved tags (``ID``/``Name``) are capitalised per the spec; the rest
-#: are lower-case custom tags.
+GFF3_LIST_SEPARATOR = ","
+
+_LIST_ATTRIBUTES = {"protein_ids"}
+
 _ATTRIBUTE_COLUMNS = [
-    ("Name", "Species"),
-    ("family", "Family"),
-    ("genus", "Genus"),
-    ("species", "Species"),
-    ("molecule_type", "Molecule_type"),
-    ("product", "Protein-Products"),
-    ("protein_ids", "Protein-IDs"),
-    ("host", "Host"),
+    ("Name", "_species"),
+    *((rank, f"_{rank}") for rank, _ in RANKS),
+    ("molecule_type", "molecule_type"),
+    ("product", "protein_products"),
+    ("protein_ids", "protein_ids"),
+    ("host", "host"),
     ("overlap_status", "tag"),
 ]
 
@@ -61,18 +54,26 @@ def _escape(value: object) -> str:
     return text
 
 
+def _format(tag: str, value: object) -> str:
+    """Escape an attribute value, writing a list attribute as a GFF3 list."""
+    if tag in _LIST_ATTRIBUTES:
+        entries = str(value).split(PROTEIN_ID_SEPARATOR)
+        return GFF3_LIST_SEPARATOR.join(_escape(entry) for entry in entries)
+    return _escape(value)
+
+
 class WriteGFF3:
     """Convert an EEfinder taxonomy table into a GFF3 annotation file.
 
     Each row of the taxonomy TSV becomes one feature, and features are sorted by
-    sequence id then start. The ``Element-ID`` (``contig:start-end``) provides
+    sequence id then start. The ``element_id`` (``contig:start-end``) provides
     the sequence id and coordinates; the coordinates are BED-style (0-based,
     half-open, as emitted by ``bedtools merge``) and are converted to GFF3's
-    1-based inclusive convention (``start + 1 .. end``). ``Average_pident`` is
+    1-based inclusive convention (``start + 1 .. end``). ``average_pident`` is
     used as the feature score. Runs on instantiation.
 
     The ``ID`` attribute is prefixed with the run ``prefix`` so it matches the
-    ``EEs.fa`` FASTA headers (``{prefix}/{Element-ID}``) for cross-referencing.
+    ``EEs.fa`` FASTA headers (``{prefix}/{element_id}``) for cross-referencing.
 
     Parameters
     ----------
@@ -82,7 +83,7 @@ class WriteGFF3:
         Path of the GFF3 file to write.
     prefix : str, optional
         Run prefix prepended to each element's ``ID`` so it matches the FASTA
-        headers. Empty by default (``ID`` is then the bare ``Element-ID``).
+        headers. Empty by default (``ID`` is then the bare ``element_id``).
     source : str, optional
         Value for GFF3 column 2 (the annotation source). Defaults to
         ``"EEfinder"``.
@@ -134,7 +135,7 @@ class WriteGFF3:
 
     def _attributes(self, row: pd.Series) -> str:
         """Build the GFF3 column-9 attribute string for one element."""
-        pairs = [("ID", self._qualified_id(row["Element-ID"]))]
+        pairs = [("ID", self._qualified_id(row["element_id"]))]
         for tag, column in _ATTRIBUTE_COLUMNS:
             if column not in row:
                 continue
@@ -142,32 +143,39 @@ class WriteGFF3:
             if pd.isna(value) or str(value) == "":
                 continue
             pairs.append((tag, value))
-        return ";".join(f"{tag}={_escape(value)}" for tag, value in pairs)
+        return ";".join(f"{tag}={_format(tag, value)}" for tag, value in pairs)
 
     def write_gff3(self) -> None:
         """Read the taxonomy table and write features sorted by seqid/start."""
         df = pd.read_csv(self.tax_file, sep="\t")
-        has_score = "Average_pident" in df.columns
+        taxonomy = df["taxonomy"] if "taxonomy" in df.columns else ""
+        for rank, _ in RANKS:
+            df[f"_{rank}"] = (
+                taxonomy.map(lambda t, r=rank: rank_name(t, r))
+                if "taxonomy" in df.columns
+                else ""
+            )
+        has_score = "average_pident" in df.columns
 
         features = []
         for _, row in df.iterrows():
-            contig, start, end = self._parse_element_id(row["Element-ID"])
+            contig, start, end = self._parse_element_id(row["element_id"])
             features.append((contig, start, end, row))
         features.sort(key=lambda feature: (feature[0], feature[1], feature[2]))
 
         with open(self.output_file, "w") as gff_out:
             gff_out.write(f"{GFF3_VERSION}\n")
             for contig, start, end, row in features:
-                score = row["Average_pident"] if has_score else float("nan")
+                score = row["average_pident"] if has_score else float("nan")
                 columns = [
                     contig,
                     self.source,
                     self.feature_type,
-                    str(start + 1),  # BED 0-based -> GFF3 1-based
+                    str(start + 1),
                     str(end),
                     "." if pd.isna(score) else str(score),
-                    _STRAND.get(row["Sense"], "."),
-                    ".",  # phase: only meaningful for CDS features
+                    _STRAND.get(row["sense"], "."),
+                    ".",
                     self._attributes(row),
                 ]
                 gff_out.write("\t".join(columns) + "\n")

@@ -1,35 +1,41 @@
 """Protein-name standardisation used by ``get-databases``.
 
-Standardisation collapses the free-text protein products in a RefSeq download to
-a small set of canonical names.  Every target type shares a generic cleaning
-pipeline (directive stripping, molecular-weight and misspelling normalisation,
-special-character removal, capitalisation, and the bare-``CDS``/``ORF`` ->
-``"Unknown"`` collapse); a target-specific *mapper* is layered on top:
-
-* ``virus`` — matches the bundled ``data/viral_proteins.tsv`` map, respecting the
-  molecule-type scope (e.g. every RdRp spelling/synonym -> ``RdRp``).
-* ``bacteria`` — generic cleaning only for now (extension point for a future
-  bacterial protein map).
-* ``host`` — generic cleaning only (host baits are gene/protein names kept
-  as-is aside from cleaning).
-
-:func:`standardize_protein` is the public entry point; it dispatches on the
-``target`` argument.
+:func:`standardize_protein` is the entry point. It runs a shared cleaning
+pipeline and then, for the ``virus`` target, the rules in
+``data/protein_rules.yaml``; ``bacteria`` and ``host`` are cleaned only.
+``data/README.md`` documents the rule file and its scopes.
 """
 
 from __future__ import annotations
 import re
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, NamedTuple, Optional
+import yaml
+from eefinder.lineage import parse_lineage
+from eefinder.log import logger
 
-# ---------------------------------------------------------------------------
-# Shared cleaning primitives (target-agnostic)
-# ---------------------------------------------------------------------------
+_RULE_FILE = Path(__file__).resolve().parent / "data" / "protein_rules.yaml"
 
-#: Regex to capture molecular weight-like names such as "100 kDa", "33-kDa",
-#: "33K-like protein", "33L protein" and standardize them to "X kDa protein".
-#: The unit may be separated from the number by whitespace and/or a hyphen so
-#: that "33 kDa" and "33-kDa" collapse to the same "33 kDa protein".
+
+def _load_rules() -> dict:
+    """Read the bundled rule file, empty when it is missing or unreadable."""
+    if not _RULE_FILE.is_file():
+        logger.warning(f"no protein rule file at {_RULE_FILE}; names are only cleaned")
+        return {}
+    try:
+        with open(_RULE_FILE) as handle:
+            loaded = yaml.safe_load(handle)
+    except (OSError, yaml.YAMLError) as err:
+        logger.warning(
+            f"could not read {_RULE_FILE.name} ({err}); names are only cleaned"
+        )
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+_RULES = _load_rules()
+
+
 _MW_RE = re.compile(
     r"\b(\d+)[\s-]*(?:kda|kd|k|l)(?:[- ]*(?:putative\s+)?(?:nonstructural\s+)?(?:protein|like\s+protein))?\b",
     re.IGNORECASE,
@@ -37,18 +43,7 @@ _MW_RE = re.compile(
 
 
 def normalize_molecular_weight(name: str) -> str:
-    """Standardise molecular-weight protein names to ``"X kDa protein"``.
-
-    Parameters
-    ----------
-    name : str
-        Raw protein product possibly carrying a molecular-weight token.
-
-    Returns
-    -------
-    str
-        ``name`` with any molecular-weight token rewritten to ``"X kDa
-        protein"``; unchanged when no such token is present.
+    """Rewrite a molecular-weight token to ``"X kDa protein"``.
 
     Examples
     --------
@@ -64,44 +59,25 @@ def normalize_molecular_weight(name: str) -> str:
     return _MW_RE.sub(r"\1 kDa protein", name)
 
 
-#: NCBI CDS FASTA "[key=value]" metadata tags (e.g. "[organism=...]",
-#: "[protein=...]", "[gbkey=CDS]") that can leak into a raw product name. The
-#: value may itself contain one level of nested "[...]" (a strain/isolate tag,
-#: e.g. "[organism=Maize streak virus - A[South Africa]]").
 _BRACKET_TAG_RE = re.compile(r"\[[A-Za-z_]+=(?:[^\[\]]|\[[^\[\]]*\])*\]")
 
 
 def strip_bracket_tags(name: str) -> str:
-    """Remove NCBI ``[key=value]`` metadata tags from a protein name.
-
-    Parameters
-    ----------
-    name : str
-        A protein product possibly carrying leaked ``[key=value]`` tags such as
-        ``[organism=...]``, ``[protein=...]`` or ``[gbkey=CDS]``.
-
-    Returns
-    -------
-    str
-        ``name`` with any such tag removed (whitespace is not collapsed here).
+    """Remove NCBI ``[key=value]`` metadata tags, leaving whitespace uncollapsed.
 
     Examples
     --------
-    >>> strip_bracket_tags("nucleoprotein [organism=Rabies lyssavirus]").strip()
+    >>> strip_bracket_tags("nucleoprotein [organism=Some virus]").strip()
     'nucleoprotein'
     """
     return _BRACKET_TAG_RE.sub(" ", name)
 
 
-#: Special characters (incl. quotes) stripped from a protein name.
 _SPECIAL_CHARS = ":,/\\?!\"'"
 
 _QUALIFIER_RE = re.compile(r"^(putative|predicted|probable|hypothetical)\s+")
 _TRAILING_RE = re.compile(r"(,\s*partial|\s+precursor)$")
 
-#: Leading hedging qualifiers removed from the *emitted* name (case-insensitive,
-#: repeated). "hypothetical" is deliberately excluded so "hypothetical protein"
-#: does not collapse to a bare "protein".
 _OUTPUT_QUALIFIER_RE = re.compile(
     r"^\s*(?:putative|putatively|predicted|probable|possible|presumed|presumptive)\s+",
     re.IGNORECASE,
@@ -117,9 +93,6 @@ def _strip_qualifiers(text: str) -> str:
     return text
 
 
-#: Non-structural-protein designation (``NS5``, ``NS5A``, ``NS4B``, ...) followed
-#: by a redundant "protein" / "-like protein" / "peptide" suffix.  The bare
-#: designation is kept (e.g. ``NS5 protein`` / ``NS5-like protein`` -> ``NS5``).
 _NS_DESIGNATION_RE = re.compile(
     r"^(NS\d+[A-Za-z]?)(?:[\s-]+(?:like[\s-]+)?protein|[\s-]+peptide)$",
     re.IGNORECASE,
@@ -132,67 +105,35 @@ def _strip_designation_suffix(text: str) -> str:
     return match.group(1).upper() if match else text
 
 
-#: Leading "CDS:" / "ORF:" naming directives to strip from a protein name.
 _LEADING_DIRECTIVE_RE = re.compile(r"^\s*(cds|orf)\s*:\s*", re.IGNORECASE)
 
-#: Names that carry no protein information once directives/punctuation are gone.
 _UNKNOWN_TOKENS = {"", "cds", "orf"}
 
-#: Common misspellings/truncations in NCBI protein names, observed in a full
-#: RefSeq viral download.  Applied by :func:`_apply_typos` both to the match key
-#: (so the corrected form matches a protein map) and to the emitted name (so typo
-#: variants of an *unmapped* protein still converge).  Keys are matched as whole
-#: words, case-insensitively (see :data:`_TYPO_RE`), so a typo that is a prefix
-#: of the correct spelling (e.g. "membran" -> "membrane") does not corrupt the
-#: already-correct word.
 _TYPO_CORRECTIONS: dict[str, str] = {
-    # Truncations/mangled "polymerase".  "polymeras" only matches when it is not
-    # already the correct "polymerase" (word boundary requires no trailing "e").
-    "polymeras": "polymerase",
-    "polymrease": "polymerase",
-    "polymarase": "polymerase",
-    "polymerse": "polymerase",
-    "polymease": "polymerase",
-    "polyermase": "polymerase",
-    # Nucleocapsid / capsid.
-    "nucleocapside": "nucleocapsid",
-    "nucleopasid": "nucleocapsid",
-    "capside": "capsid",
-    "caspsid": "capsid",
-    # Polyprotein.
-    "polyprotien": "polyprotein",
-    "polyportein": "polyprotein",
-    "plyprotein": "polyprotein",
-    # Membrane / phospho.
-    "membran": "membrane",
-    "membraine": "membrane",
-    "membrain": "membrane",
-    "phoshoprotein": "phosphoprotein",
-    # Hypothetical (so the "hypothetical*" drop below catches misspellings).
-    "hypotheticla": "hypothetical",
-    "hypotheticl": "hypothetical",
-    "hyphothetical": "hypothetical",
-    "hypotetical": "hypothetical",
-    "hypothecial": "hypothetical",
-    "hyppothetical": "hypothetical",
-    # Truncated "glycoprotein" (e.g. "Glycop C", "Glycoprot").  Word boundaries
-    # keep the already-correct "glycoprotein"/"glycoproteins" untouched.
-    "glycoprot": "glycoprotein",
-    "glycop": "glycoprotein",
-    # Compound words where "glycoprotein" is fused with a prefix — split so the
-    # ``\bglycoprotein\b`` contains-match can find them.
-    "phosphoglycoprotein": "phospho glycoprotein",
-    "proteinglycoprotein": "protein glycoprotein",
+    str(wrong).strip().lower(): str(right).strip()
+    for right, wrongs in (_RULES.get("typos") or {}).items()
+    for wrong in (wrongs or ())
+    if str(wrong).strip()
 }
 
-#: Whole-word alternation of the misspellings above, longest-first so that
-#: overlapping keys prefer the most specific correction.  Case-insensitive so it
-#: also corrects the (mixed-case) name kept for unmapped products.
 _TYPO_RE = re.compile(
     r"\b(?:%s)\b"
     % "|".join(re.escape(t) for t in sorted(_TYPO_CORRECTIONS, key=len, reverse=True)),
     re.IGNORECASE,
 )
+
+_REWRITES: "list[tuple[re.Pattern, str]]" = [
+    (re.compile(entry["pattern"], re.IGNORECASE), entry.get("replacement") or "")
+    for entry in (_RULES.get("rewrites") or ())
+    if isinstance(entry, dict) and (entry.get("pattern") or "").strip()
+]
+
+
+def _apply_rewrites(text: str) -> str:
+    """Apply the bundled shape-fix rewrites, in file order."""
+    for pattern, replacement in _REWRITES:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def _apply_typos(text: str) -> str:
@@ -202,17 +143,12 @@ def _apply_typos(text: str) -> str:
 
 def _normalize_product(name: str) -> str:
     """Normalise a raw protein product into a match key for a protein map."""
-    # Treat separators (incl. those joining compound names) as spaces so that
-    # tokens like "rdrp" in "CP/RdRp fusion" or "...; RdRp" are matchable.
     text = re.sub(r"[-_/\\();,]", " ", name.lower())
     text = re.sub(r"\s+", " ", text).strip()
     text = _QUALIFIER_RE.sub("", text)
     text = _TRAILING_RE.sub("", text)
     text = text.strip()
-    # Fix known misspellings so the corrected form matches the protein map.
     text = _apply_typos(text)
-    # Singularise "polymerases" for matching only, so "...RNA polymerases" reaches
-    # the "...polymerase" rules while the emitted (unmapped) name keeps its plural.
     text = re.sub(r"\bpolymerases\b", "polymerase", text)
     return text
 
@@ -227,21 +163,20 @@ def _clean_and_capitalize(name: str) -> str:
     return name
 
 
-#: A protein-map lookup: given the normalised match key and the record's
-#: ``Molecule_type``, return a canonical name or ``None`` when nothing matches.
-ProteinMapper = Callable[[str, str], Optional[str]]
+ProteinMapper = Callable[[str, str, "frozenset[str]"], Optional[str]]
 
 
-def _standardize(name: str, mol_type: str, mapper: Optional[ProteinMapper]) -> str:
+def _standardize(
+    name: str,
+    mol_type: str,
+    mapper: Optional[ProteinMapper],
+    taxonomy: str = "",
+) -> str:
     """Run the shared cleaning pipeline, optionally applying a target ``mapper``.
 
-    The name is cleaned (leading ``CDS:``/``ORF:`` directive stripped,
-    molecular-weight and misspelling normalisation) and, when ``mapper`` is
-    given, looked up against a target-specific protein map.  A map hit yields
-    its canonical name; otherwise the cleaned name is kept.  Either way the
-    result has special characters removed and its leading letter capitalised, and
-    a name that is only a directive (``CDS``/``ORF``) or empty becomes
-    ``"Unknown"``.
+    A ``mapper`` hit yields its canonical name, otherwise the cleaned name is
+    kept. A name that is only a ``CDS``/``ORF`` directive, or that begins with
+    ``hypothetical``, becomes ``"Unknown"``.
 
     Parameters
     ----------
@@ -251,74 +186,110 @@ def _standardize(name: str, mol_type: str, mapper: Optional[ProteinMapper]) -> s
         The record's ``Molecule_type``, passed through to ``mapper`` for scoping.
     mapper : ProteinMapper, optional
         Target-specific canonicalisation; ``None`` for generic cleaning only.
+    taxonomy : str
+        The record's lineage, passed through to ``mapper`` for scoping.
 
     Returns
     -------
     str
         The standardised, cleaned and capitalised protein name.
     """
-    # Remove any leaked NCBI "[key=value]" metadata tag (e.g. "[organism=...]").
     stripped = strip_bracket_tags(name)
-    # Drop a leading CDS:/ORF: directive, so "CDS: capsid protein" still matches
-    # and a bare "CDS:"/"ORF:" collapses to nothing.
     stripped = _LEADING_DIRECTIVE_RE.sub("", stripped)
     stripped = normalize_molecular_weight(stripped)
-    # Correct misspellings on the kept name too, so typo variants of an unmapped
-    # protein still converge (e.g. "membran protein" -> "Membrane protein").
     stripped = _apply_typos(stripped)
-    # Drop leading hedging qualifiers ("putative ", "predicted ", ...) from the
-    # emitted name, not just the match key.
+    stripped = _apply_rewrites(stripped)
     stripped = _strip_qualifiers(stripped)
-    # Any "hypothetical ..." product (all misspellings normalised above) is
-    # uninformative -> flag as Unknown so it is dropped from the FASTA and CSV.
     if stripped.strip().lower().startswith("hypothetical"):
         return "Unknown"
-    # Reduce an "NSxx protein/peptide" designation to the bare "NSxx".
     stripped = _strip_designation_suffix(stripped)
 
     if mapper is not None:
-        suggested = mapper(_normalize_product(stripped), mol_type)
+        suggested = mapper(
+            _normalize_product(stripped), mol_type, lineage_taxa(taxonomy)
+        )
         if suggested is not None:
             return _clean_and_capitalize(suggested)
 
-    # Unmapped: a name that is only a directive (or empty) is unknown.
     result = _clean_and_capitalize(stripped)
     if result.lower() in _UNKNOWN_TOKENS:
         return "Unknown"
     return result
 
 
-# ---------------------------------------------------------------------------
-# Virus target: bundled viral protein map
-# ---------------------------------------------------------------------------
+class _Rule(NamedTuple):
+    """One rule of the ``proteins`` section, flattened out of the nesting."""
 
-#: Bundled viral protein-name standardization map (see the file header for the
-#: normalisation / scoping rules it encodes).
-_PROTEIN_MAP_TABLE = Path(__file__).resolve().parent / "data" / "viral_proteins.tsv"
+    suggested: str
+    current: str
+    match_type: str
+    mol_scope: str
+    taxon_scope: str
+    pattern: Optional["re.Pattern"]
 
-
-def _load_protein_map() -> tuple[dict, list]:
-    """Load the viral protein-name map as ``(exact, contains)`` lookups."""
-    exact: dict[str, list] = {}
-    contains: list = []
-    if _PROTEIN_MAP_TABLE.is_file():
-        with open(_PROTEIN_MAP_TABLE) as file:
-            for line in file:
-                line = line.rstrip("\n")
-                if not line or line.startswith("#"):
-                    continue
-                parts = line.split("\t")
-                if len(parts) < 4 or parts[0] == "suggested_name":
-                    continue
-                suggested, current, match_type, scope = parts[:4]
-                if match_type == "exact":
-                    exact.setdefault(current, []).append((suggested, scope))
-                elif match_type == "contains":
-                    contains.append((current, suggested, scope))
-    return exact, contains
+    def match_position(self, normalized: str) -> Optional[int]:
+        """Where this rule's key matches, or ``None`` when it does not."""
+        if self.match_type == "exact":
+            return 0 if normalized == self.current else None
+        if not self.pattern:
+            return None
+        found = self.pattern.search(normalized)
+        return found.start() if found else None
 
 
-_PROTEIN_EXACT, _PROTEIN_CONTAINS = _load_protein_map()
+def _compile_rule(
+    suggested: str, current: str, match_type: str, mol_scope: str, taxon_scope: str
+) -> Optional[_Rule]:
+    """Build a :class:`_Rule`, or ``None`` for an unusable match type/pattern."""
+    if match_type == "exact":
+        pattern = None
+    elif match_type == "contains":
+        pattern = re.compile(rf"\b{re.escape(current)}\b")
+    elif match_type == "regex":
+        try:
+            pattern = re.compile(current)
+        except re.error:
+            return None
+    else:
+        return None
+    return _Rule(
+        suggested=suggested,
+        current=current,
+        match_type=match_type,
+        mol_scope=mol_scope,
+        taxon_scope=taxon_scope,
+        pattern=pattern,
+    )
+
+
+def _load_protein_map() -> "list[_Rule]":
+    """Flatten the nested ``proteins`` section into an ordered list of rules."""
+    rules: "list[_Rule]" = []
+    for taxon_scope, by_mol in (_RULES.get("proteins") or {}).items():
+        for mol_scope, by_name in (by_mol or {}).items():
+            for suggested, by_type in (by_name or {}).items():
+                for match_type, keys in (by_type or {}).items():
+                    for key in keys or ():
+                        rule = _compile_rule(
+                            str(suggested).strip(),
+                            str(key).strip(),
+                            str(match_type).strip(),
+                            str(mol_scope).strip(),
+                            str(taxon_scope).strip(),
+                        )
+                        if rule is None:
+                            logger.warning(
+                                f"ignoring protein rule {suggested!r} <- {key!r}: "
+                                f"unusable match type {match_type!r}"
+                            )
+                            continue
+                        rules.append(rule)
+    return rules
+
+
+_PROTEIN_RULES = _load_protein_map()
+
+_ANY_TAXON = "any"
 
 
 def _in_scope(mol_type: str, scope: str) -> bool:
@@ -344,30 +315,72 @@ def _in_scope(mol_type: str, scope: str) -> bool:
     return False
 
 
-def _viral_mapper(normalized: str, mol_type: str) -> Optional[str]:
-    """Look ``normalized`` up in the viral map, honouring the molecule-type scope."""
-    for candidate, scope in _PROTEIN_EXACT.get(normalized, []):
-        if _in_scope(mol_type, scope):
-            return candidate
-    for current, candidate, scope in _PROTEIN_CONTAINS:
-        if re.search(rf"\b{re.escape(current)}\b", normalized) and _in_scope(
-            mol_type, scope
-        ):
-            return candidate
+def lineage_taxa(taxonomy: str) -> "frozenset[str]":
+    """Return the lower-cased taxon names of a lineage, for ``taxon_scope``.
+
+    Parameters
+    ----------
+    taxonomy : str
+        A ``Taxonomy`` value, or a bare taxon name.
+
+    Returns
+    -------
+    frozenset[str]
+        Every named rank, or the bare name on its own.
+    """
+    text = str(taxonomy or "").strip()
+    if not text:
+        return frozenset()
+    parsed = parse_lineage(text)
+    if parsed:
+        return frozenset(name.lower() for name in parsed.values())
+    return frozenset({text.lower()})
+
+
+def _taxon_in_scope(taxa: "frozenset[str]", scope: str) -> bool:
+    """Whether any taxon of the record's lineage satisfies ``taxon_scope``."""
+    return any(
+        token.strip().lower() in taxa
+        for token in scope.split(";")
+        if token.strip() and token.strip() != _ANY_TAXON
+    )
+
+
+def _viral_mapper(
+    normalized: str, mol_type: str, taxa: "frozenset[str]" = frozenset()
+) -> Optional[str]:
+    """Look ``normalized`` up in the viral map, honouring both scopes.
+
+    Rules are ranked by: taxon-scoped before unscoped, ``exact`` before
+    ``contains``/``regex``, earliest match in the name, then file order.
+    """
+    for taxon_scoped in (True, False):
+        best: "Optional[tuple[int, int, str]]" = None
+        for order, rule in enumerate(_PROTEIN_RULES):
+            if (rule.taxon_scope != _ANY_TAXON) is not taxon_scoped:
+                continue
+            if taxon_scoped and not _taxon_in_scope(taxa, rule.taxon_scope):
+                continue
+            if not _in_scope(mol_type, rule.mol_scope):
+                continue
+            position = rule.match_position(normalized)
+            if position is None:
+                continue
+            if rule.match_type == "exact":
+                return rule.suggested
+            if best is None or (position, order) < best[:2]:
+                best = (position, order, rule.suggested)
+        if best is not None:
+            return best[2]
     return None
 
 
-# ---------------------------------------------------------------------------
-# Per-target standardisers + dispatcher
-# ---------------------------------------------------------------------------
-
-
-def _standardize_virus(name: str, mol_type: str = "") -> str:
+def _standardize_virus(name: str, mol_type: str = "", taxonomy: str = "") -> str:
     """Standardise a viral protein name via the bundled viral protein map."""
-    return _standardize(name, mol_type, _viral_mapper)
+    return _standardize(name, mol_type, _viral_mapper, taxonomy)
 
 
-def _standardize_bacteria(name: str, mol_type: str = "") -> str:
+def _standardize_bacteria(name: str, mol_type: str = "", taxonomy: str = "") -> str:
     """Standardise a bacterial protein name (generic cleaning only, for now).
 
     There is no bacterial protein map yet; this is the extension point for
@@ -376,7 +389,7 @@ def _standardize_bacteria(name: str, mol_type: str = "") -> str:
     return _standardize(name, mol_type, None)
 
 
-def _standardize_host(name: str, mol_type: str = "") -> str:
+def _standardize_host(name: str, mol_type: str = "", taxonomy: str = "") -> str:
     """Standardise a host protein name (generic cleaning only).
 
     Host baits are gene/protein names kept as-is aside from generic cleaning;
@@ -385,15 +398,16 @@ def _standardize_host(name: str, mol_type: str = "") -> str:
     return _standardize(name, mol_type, None)
 
 
-#: Registry of per-target standardisers, keyed by ``get-databases`` target type.
-_STANDARDIZERS: dict[str, Callable[[str, str], str]] = {
+_STANDARDIZERS: dict[str, Callable[[str, str, str], str]] = {
     "virus": _standardize_virus,
     "bacteria": _standardize_bacteria,
     "host": _standardize_host,
 }
 
 
-def standardize_protein(name: str, mol_type: str = "", target: str = "virus") -> str:
+def standardize_protein(
+    name: str, mol_type: str = "", target: str = "virus", taxonomy: str = ""
+) -> str:
     """Standardise a raw protein name for the given ``target`` database.
 
     Parameters
@@ -405,6 +419,9 @@ def standardize_protein(name: str, mol_type: str = "", target: str = "virus") ->
     target : str
         The database target — one of ``"virus"``, ``"bacteria"`` or ``"host"``;
         selects the target-specific standardisation logic.
+    taxonomy : str
+        The record's lineage, used to scope the taxon-specific rules. Without
+        it only the unscoped rules apply.
 
     Returns
     -------
@@ -420,4 +437,4 @@ def standardize_protein(name: str, mol_type: str = "", target: str = "virus") ->
         standardizer = _STANDARDIZERS[target]
     except KeyError:
         raise ValueError(f"Unknown target type: {target!r}")
-    return standardizer(name, mol_type)
+    return standardizer(name, mol_type, taxonomy)

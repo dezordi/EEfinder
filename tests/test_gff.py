@@ -9,18 +9,16 @@ from eefinder.gff import WriteGFF3
 
 def _write_tax(path, rows):
     columns = [
-        "Element-ID",
-        "Sense",
-        "Protein-IDs",
-        "Protein-Products",
-        "Molecule_type",
-        "Family",
-        "Genus",
-        "Species",
-        "Host",
-        "Overlaped_Element_ID",
+        "element_id",
+        "sense",
+        "protein_ids",
+        "protein_products",
+        "molecule_type",
+        "taxonomy",
+        "host",
+        "overlaped_element_id",
         "tag",
-        "Average_pident",
+        "average_pident",
     ]
     pd.DataFrame(rows, columns=columns).to_csv(path, sep="\t", index=False)
 
@@ -42,9 +40,7 @@ def test_write_gff3_columns_and_coordinates(tmp_path):
                 "P1|80.0",
                 "polyprotein",
                 "ssRNA(+)",
-                "FamA",
-                "GenA",
-                "SpA",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
                 "Aedes",
                 "",
                 "unique",
@@ -56,9 +52,7 @@ def test_write_gff3_columns_and_coordinates(tmp_path):
                 "P2|50.0 | P3|60.0",
                 "glyco",
                 "ssRNA(-)",
-                "FamB",
-                "GenB",
-                "SpB",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamB;g__GenB;s__SpB",
                 "Culex",
                 "ctg1:100-200",
                 "overlaped",
@@ -75,8 +69,6 @@ def test_write_gff3_columns_and_coordinates(tmp_path):
     assert len(features) == 2
     by_seqid = {cols[0]: cols for cols in features}
 
-    # seqid, source, type, start (0-based+1), end, score, strand, phase.
-    # Default analysis is viral -> endogenous_viral_element.
     assert by_seqid["ctg1"][:8] == [
         "ctg1",
         "EEfinder",
@@ -88,7 +80,6 @@ def test_write_gff3_columns_and_coordinates(tmp_path):
         ".",
     ]
 
-    # rpartition keeps the "-" in the contig name; negative sense -> "-".
     assert by_seqid["ctg-x"][3:5] == ["6", "40"]
     assert by_seqid["ctg-x"][6] == "-"
 
@@ -104,24 +95,31 @@ def test_write_gff3_features_sorted_by_start(tmp_path):
                 "P|1.0",
                 "p",
                 "m",
-                "F",
-                "G",
-                "S",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__F;g__G;s__S",
                 "H",
                 "",
                 "u",
                 1.0,
             ],
-            ["ctg1:50-100", "pos", "P|1.0", "p", "m", "F", "G", "S", "H", "", "u", 1.0],
+            [
+                "ctg1:50-100",
+                "pos",
+                "P|1.0",
+                "p",
+                "m",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__F;g__G;s__S",
+                "H",
+                "",
+                "u",
+                1.0,
+            ],
             [
                 "ctg1:100-150",
                 "pos",
                 "P|1.0",
                 "p",
                 "m",
-                "F",
-                "G",
-                "S",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__F;g__G;s__S",
                 "H",
                 "",
                 "u",
@@ -142,7 +140,20 @@ def test_write_gff3_id_carries_prefix_to_match_fasta_headers(tmp_path):
     tax = tmp_path / "eves.tax"
     _write_tax(
         tax,
-        [["ctg1:100-200", "pos", "P|1.0", "p", "m", "F", "G", "S", "H", "", "u", 1.0]],
+        [
+            [
+                "ctg1:100-200",
+                "pos",
+                "P|1.0",
+                "p",
+                "m",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__F;g__G;s__S",
+                "H",
+                "",
+                "u",
+                1.0,
+            ]
+        ],
     )
     out = tmp_path / "eves.gff3"
 
@@ -150,7 +161,6 @@ def test_write_gff3_id_carries_prefix_to_match_fasta_headers(tmp_path):
 
     _, features = _read_features(out)
     attrs = dict(pair.split("=", 1) for pair in features[0][8].split(";"))
-    # ID must equal the EEs.fa header "{prefix}/{Element-ID}".
     assert attrs["ID"] == "Aaeg/ctg1:100-200"
 
 
@@ -165,9 +175,7 @@ def test_write_gff3_attributes_and_escaping(tmp_path):
                 "P1|90.0",
                 "polyprotein, partial",
                 "ssRNA(+)",
-                "FamA",
-                "GenA",
-                "SpA",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
                 "Aedes",
                 "",
                 "unique",
@@ -185,18 +193,16 @@ def test_write_gff3_attributes_and_escaping(tmp_path):
     assert attrs["Name"] == "SpA"
     assert attrs["family"] == "FamA"
     assert attrs["overlap_status"] == "unique"
-    # The comma in the product must be percent-encoded per the GFF3 spec.
     assert attrs["product"] == "polyprotein%2C partial"
 
 
 def test_write_gff3_missing_score_column(tmp_path):
-    # A taxonomy table without Average_pident yields a "." score and no crash.
     tax = tmp_path / "eves.tax"
     pd.DataFrame(
         {
-            "Element-ID": ["ctg1:10-20"],
-            "Sense": ["pos"],
-            "Family": ["FamA"],
+            "element_id": ["ctg1:10-20"],
+            "sense": ["pos"],
+            "taxonomy": ["r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA"],
         }
     ).to_csv(tax, sep="\t", index=False)
     out = tmp_path / "eves.gff3"
@@ -204,7 +210,7 @@ def test_write_gff3_missing_score_column(tmp_path):
     WriteGFF3(str(tax), str(out))
 
     _, features = _read_features(out)
-    assert features[0][5] == "."  # score column
+    assert features[0][5] == "."
     assert features[0][6] == "+"
 
 
@@ -219,9 +225,7 @@ def _single_element_tax(tmp_path):
                 "P1|90.0",
                 "prot",
                 "ssRNA",
-                "FamA",
-                "GenA",
-                "SpA",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
                 "Aedes",
                 "",
                 "unique",
@@ -273,9 +277,7 @@ def test_write_gff3_custom_source_and_type(tmp_path):
                 "P1|90.0",
                 "prot",
                 "ssRNA",
-                "FamA",
-                "GenA",
-                "SpA",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
                 "Aedes",
                 "",
                 "unique",
@@ -290,3 +292,62 @@ def test_write_gff3_custom_source_and_type(tmp_path):
     _, features = _read_features(out)
     assert features[0][1] == "MyTool"
     assert features[0][2] == "match"
+
+
+def test_write_gff3_protein_ids_are_a_comma_list(tmp_path):
+    """The ``;`` of the TSV would have to be escaped; GFF3 lists use commas."""
+    tax = tmp_path / "eves.tax"
+    _write_tax(
+        tax,
+        [
+            [
+                "ctg1:0-10",
+                "pos",
+                "P1|90.0;P2|80.0",
+                "prot",
+                "ssRNA",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
+                "Aedes",
+                "",
+                "unique",
+                85.0,
+            ]
+        ],
+    )
+    out = tmp_path / "eves.gff3"
+
+    WriteGFF3(str(tax), str(out))
+
+    _, features = _read_features(out)
+    attrs = dict(pair.split("=", 1) for pair in features[0][8].split(";"))
+    assert attrs["protein_ids"] == "P1|90.0,P2|80.0"
+    assert "%3B" not in features[0][8]
+
+
+def test_write_gff3_escapes_a_comma_inside_a_list_entry(tmp_path):
+    """A literal comma must not be read as a list separator."""
+    tax = tmp_path / "eves.tax"
+    _write_tax(
+        tax,
+        [
+            [
+                "ctg1:0-10",
+                "pos",
+                "P1|90.0;P2, odd|80.0",
+                "prot",
+                "ssRNA",
+                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
+                "Aedes",
+                "",
+                "unique",
+                85.0,
+            ]
+        ],
+    )
+    out = tmp_path / "eves.gff3"
+
+    WriteGFF3(str(tax), str(out))
+
+    _, features = _read_features(out)
+    attrs = dict(pair.split("=", 1) for pair in features[0][8].split(";"))
+    assert attrs["protein_ids"] == "P1|90.0,P2%2C odd|80.0"

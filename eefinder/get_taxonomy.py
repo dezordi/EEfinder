@@ -5,30 +5,26 @@ import csv
 import re
 import pandas as pd
 from Bio import SeqIO
+from eefinder.lineage import lca
 from eefinder.utils import check_metadata_columns
 
-#: Column order of the taxonomy tables written for the user.
 TAXONOMY_COLUMNS = [
-    "Element-ID",
-    "Sense",
-    "Protein-IDs",
-    "Protein-Products",
-    "Molecule_type",
-    "Family",
-    "Genus",
-    "Species",
-    "Host",
+    "element_id",
+    "sense",
+    "protein_ids",
+    "protein_products",
+    "molecule_type",
+    "taxonomy",
+    "host",
 ]
 
-# Column indices in the taxonomy-signature CSV produced by GetTaxonomy
-# (the filtered outfmt6 columns followed by the joined metadata columns).
+PROTEIN_ID_SEPARATOR = ";"
+
 _ACCESSION_COL = 1
-_SPECIES_COL = 15
-_GENUS_COL = 16
-_FAMILY_COL = 17
-_MOLTYPE_COL = 18
-_PRODUCT_COL = 19
-_HOST_COL = 20
+_TAXONOMY_COL = 15
+_MOLTYPE_COL = 16
+_PRODUCT_COL = 17
+_HOST_COL = 18
 
 
 class GetTaxonomy:
@@ -67,7 +63,8 @@ class GetFinalTaxonomy:
 
     For each merged element, the constituent protein accessions are looked up
     in the taxonomy signature and their products/molecule types/families/etc.
-    are aggregated (multiple hits are joined with ``" AND "``). Writes
+    are aggregated (multiple hits are joined with ``" AND "``; their lineages
+    are reduced to their lowest common ancestor). Writes
     ``{bed_formated}.fa.tax``. Runs on instantiation.
 
     Parameters
@@ -119,25 +116,18 @@ class GetFinalTaxonomy:
 
         protein_terms = ""
         mol_type = ""
-        family = ""
-        genus = ""
-        species = ""
+        lineages: list[str] = []
         host = ""
 
         if "AND" in protein_ids:
-            # Multiple proteins were merged into this element.
-            protein_ids = re.sub("AND", "|", line[3])
+            protein_ids = re.sub(" AND ", PROTEIN_ID_SEPARATOR, line[3])
             for prot in taxonomy_rows:
                 if prot[_ACCESSION_COL] not in protein_ids:
                     continue
                 if prot[_PRODUCT_COL] not in protein_terms:
                     protein_terms += prot[_PRODUCT_COL] + " AND "
                     mol_type = prot[_MOLTYPE_COL]
-                    family = prot[_FAMILY_COL]
-                if prot[_GENUS_COL] not in genus:
-                    genus += prot[_GENUS_COL] + " AND "
-                if prot[_SPECIES_COL] not in species:
-                    species += prot[_SPECIES_COL] + " AND "
+                lineages.append(prot[_TAXONOMY_COL])
                 if prot[_HOST_COL] not in host:
                     host += prot[_HOST_COL] + " AND "
         else:
@@ -145,19 +135,13 @@ class GetFinalTaxonomy:
                 if prot[_ACCESSION_COL] in protein_ids:
                     protein_terms = prot[_PRODUCT_COL]
                     mol_type = prot[_MOLTYPE_COL]
-                    family = prot[_FAMILY_COL]
-                    genus = prot[_GENUS_COL]
-                    species = prot[_SPECIES_COL]
+                    lineages = [prot[_TAXONOMY_COL]]
                     host = prot[_HOST_COL]
 
         protein_terms = re.sub(r" AND $", "", protein_terms)
-        genus = re.sub(r" AND $", "", genus)
-        species = re.sub(r" AND $", "", species)
         host = re.sub(r" AND $", "", host)
 
-        family = family or "Unclassified"
-        genus = genus or "Unclassified"
-        species = species or "Unclassified"
+        taxonomy = lca(lineages) or "Unclassified"
         host = host or "Undefined"
 
         return [
@@ -166,9 +150,7 @@ class GetFinalTaxonomy:
             protein_ids,
             protein_terms,
             mol_type,
-            family,
-            genus,
-            species,
+            taxonomy,
             host,
         ]
 
@@ -177,7 +159,7 @@ class GetCleanedTaxonomy:
     """Subset the taxonomy table to the elements surviving mask-cleaning.
 
     Reads the cleaned EE FASTA and keeps only the taxonomy rows whose
-    ``Element-ID`` matches a retained record. Writes ``{cleaned_file}.tax``.
+    ``element_id`` matches a retained record. Writes ``{cleaned_file}.tax``.
     Runs on instantiation. Parsed by the ``--clean_masked`` option.
 
     Parameters
@@ -195,16 +177,13 @@ class GetCleanedTaxonomy:
         self.get_cleaned_taxonomy()
 
     def get_cleaned_taxonomy(self) -> None:
-        """Keep taxonomy rows whose Element-ID is present in the cleaned FASTA."""
+        """Keep taxonomy rows whose element_id is present in the cleaned FASTA."""
         with open(self.taxonomy_file) as tax_file:
             rows = list(csv.reader(tax_file, delimiter="\t"))
         if not rows:
             return
         header, data_rows = rows[0], rows[1:]
 
-        # The taxonomy table stores Element-IDs with the "PREFIX/" removed (see
-        # TagElements), so strip it from the FASTA ids before matching. Keeping
-        # the source header ensures the column count matches the copied rows.
         kept_ids = {
             re.sub(r".*/", "", seq_record.id)
             for seq_record in SeqIO.parse(self.cleaned_file, "fasta")

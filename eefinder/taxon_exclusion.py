@@ -14,21 +14,14 @@ import subprocess
 from typing import NamedTuple
 from eefinder.log import logger
 
-#: The ``datasets`` executable.
 DATASETS_BINARY = "datasets"
 
-#: Taxa left out of a viral download unless the user asks otherwise.
-#: 2697049 is SARS-CoV-2.
 DEFAULT_VIRUS_EXCLUSIONS = ("2697049",)
 
-#: Value of ``--exclude-taxon`` that turns the default exclusions off.
 NO_EXCLUSION = "none"
 
-#: Maximum number of taxa the ``datasets`` CLI accepts in an ``--inputfile``.
 INPUTFILE_LIMIT = 100
 
-#: Taxa looked up per ``summary taxonomy`` call. They travel in the request
-#: line, which the gateway rejects past a few hundred ids (HTTP 431).
 SUMMARY_CHUNK = 100
 
 
@@ -37,26 +30,18 @@ class TaxonNode(NamedTuple):
 
     tax_id: int
     name: str
-    #: Ancestors, root first (the lineage NCBI returns in ``parents``).
     parents: "tuple[int, ...]"
-    #: Direct children only.
     children: "tuple[int, ...]"
-    #: Rank, lower-cased (``"family"``, ``"genus"``, ...); empty when unranked.
     rank: str = ""
-    #: Assemblies NCBI holds for the subtree, used to report download sizes.
     assembly_count: int = 0
 
 
 class Expansion(NamedTuple):
     """The taxa to download, after excluded branches were pruned away."""
 
-    #: Tax ids to hand to ``datasets``. A single-element tuple means no
-    #: exclusion applied and the root can be requested directly.
     taxa: "tuple[int, ...]"
     root: TaxonNode
-    #: Excluded taxa that were actually found below the root.
     excluded: "tuple[TaxonNode, ...]"
-    #: Excluded taxa that are not below the root, so nothing was pruned.
     not_below_root: "tuple[TaxonNode, ...]"
 
     @property
@@ -287,7 +272,6 @@ def expand_taxon_excluding(
         else:
             outside.append(node)
 
-    # Deduplicate while keeping a stable order for reproducible commands.
     seen: "set[int]" = set()
     taxa = tuple(t for t in keep if not (t in seen or seen.add(t)))
     if not taxa:

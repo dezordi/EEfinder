@@ -44,15 +44,12 @@ def test_get_annot_bed_genus_level_naming(tmp_path):
             "sense": ["pos"],
             "qstart": [10],
             "qend": [310],
-            "Family": ["FamA"],
-            "Genus": ["GenA"],
+            "Taxonomy": ["r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__spA"],
         }
     ).to_csv(tax, sep=",", index=False)
 
     GetAnnotBed(str(tax), merge_level="genus")
 
     bed = pd.read_csv(f"{tax}.bed", sep="\t", header=None)
-    # formated_name collapses classified hits to contig|Family|Genus|sense.
-    assert bed.iloc[0, 0] == "ctg1|FamA|GenA|pos"
-    # The annotation column carries sseqid|sense|pident for later collapse.
+    assert bed.iloc[0, 0] == "ctg1|GenA|pos"
     assert bed.iloc[0, 3] == "PROT_A|pos|80.0"

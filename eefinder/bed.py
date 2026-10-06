@@ -12,6 +12,7 @@ import shlex
 import subprocess
 
 import numpy as np
+from eefinder.lineage import merge_key
 import pandas as pd
 
 
@@ -55,10 +56,10 @@ class GetFasta:
 class GetAnnotBed:
     """Build an annotated BED so truncated EEs of a taxon can be merged.
 
-    Elements are named ``contig|Family|Genus|sense`` (genus level) or
-    ``contig|Family|sense`` (family level) so that ``bedtools merge`` joins only
-    neighbouring hits of the same taxon and strand. Writes
-    ``{blast_tax_info}.bed``. Runs on instantiation.
+    Elements are named ``contig|taxon|sense``, where ``taxon`` is the name at
+    ``merge_level`` or, when the lineage has none, the lineage itself
+    (:func:`eefinder.lineage.merge_key`). Writes ``{blast_tax_info}.bed``.
+    Runs on instantiation.
 
     Parameters
     ----------
@@ -80,27 +81,14 @@ class GetAnnotBed:
         df = pd.read_csv(self.blast_tax_info, sep=",")
         df["qseqid"] = df["qseqid"].str.replace(r"\:.*", "", regex=True)
         df["sseqid"] = df["sseqid"] + "|" + df["sense"] + "|" + df["pident"].astype(str)
-        df["Family"] = df["Family"].fillna("Unknown")
-        df["Genus"] = df["Genus"].fillna("Unknown")
+        df["Taxonomy"] = df["Taxonomy"].fillna("")
 
         if self.merge_level == "genus":
-            df["formated_name"] = np.where(
-                df["Genus"] != "Unknown",
-                df["qseqid"]
-                + "|"
-                + df["Family"]
-                + "|"
-                + df["Genus"]
-                + "|"
-                + df["sense"],
-                df["qseqid"] + "|" + df["sseqid"] + "|" + df["Genus"],
-            )
+            keys = df["Taxonomy"].map(lambda t: merge_key(t, "genus"))
+            df["formated_name"] = df["qseqid"] + "|" + keys + "|" + df["sense"]
         else:
-            df["formated_name"] = np.where(
-                df["Family"] != "Unknown",
-                df["qseqid"] + "|" + df["Family"] + "|" + df["sense"],
-                df["qseqid"] + "|" + df["sseqid"] + "|" + df["Family"],
-            )
+            keys = df["Taxonomy"].map(lambda t: merge_key(t, "family"))
+            df["formated_name"] = df["qseqid"] + "|" + keys + "|" + df["sense"]
 
         bed = df[["formated_name", "qstart", "qend", "sseqid"]].copy()
         bed = bed.sort_values(["formated_name", "qstart"], ascending=(True, True))
@@ -227,7 +215,6 @@ class GetBed:
 
         with open(f"{self.input_file}.bed", "w") as bed_out:
             for header in headers:
-                # rpartition on ":" so contig names containing "-" are kept whole.
                 contig, _, coords = header.rpartition(":")
                 start, _, end = coords.partition("-")
                 bed_out.write(f"{contig}\t{start}\t{end}\n")

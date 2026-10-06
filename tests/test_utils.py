@@ -24,14 +24,13 @@ def test_check_outdir_creates_dir_and_strips_slash(tmp_path):
 
     returned = check_outdir(target)
 
-    assert returned == f"{tmp_path}/results"  # trailing slash removed
+    assert returned == f"{tmp_path}/results"
     assert Path(returned).is_dir()
 
 
 def test_check_outdir_is_idempotent(tmp_path):
     target = f"{tmp_path}/results"
     check_outdir(target)
-    # Calling again on an existing directory must not raise.
     assert check_outdir(target) == target
 
 
@@ -50,12 +49,11 @@ def test_check_metadata_columns_accepts_the_expected_header():
 
 def test_check_metadata_columns_reorders_and_drops_extras(caplog):
     shuffled = ["Host", "Extra", "Accession", "Protein", "Molecule_type"]
-    shuffled += ["Family", "Genus", "Species"]
+    shuffled += ["Taxonomy"]
 
     with caplog.at_level("WARNING", logger="eefinder"):
         returned = check_metadata_columns(shuffled)
 
-    # The caller gets the canonical order back, whatever the file order was.
     assert returned == EXPECTED_METADATA_COLUMNS
     assert "extra column(s): Extra" in caplog.text
     assert "not in the expected order" in caplog.text
@@ -75,9 +73,9 @@ def test_check_metadata_file_reads_only_the_header(tmp_path):
 
 
 def test_check_metadata_file_raises_on_bad_header(tmp_path):
-    path = _write_metadata(tmp_path, ["Accession", "Species"])
+    path = _write_metadata(tmp_path, ["Accession", "Protein"])
 
-    with pytest.raises(ValueError, match="Genus"):
+    with pytest.raises(ValueError, match="Taxonomy"):
         check_metadata_file(path)
 
 
@@ -140,10 +138,9 @@ def test_run_info_maps_arguments_and_is_json_serialisable():
 
     assert info.eefinder_version == "1.1.1"
     assert info.total_time_minutes == "2.0000"
-    assert info.arguments.merge_level == "genus"  # regression: was mis-mapped
+    assert info.arguments.merge_level == "genus"
     assert info.steps_information == []
 
-    # asdict() yields the nested dict structure written to eefinder.log.
     dumped = asdict(info)
     assert dumped["eefinder_version"] == "1.1.1"
     assert dumped["system"]["operating_system"] == "Linux-x"

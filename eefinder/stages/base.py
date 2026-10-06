@@ -65,12 +65,9 @@ class Stage(ABC):
     title: str = ""
     stage_id: str = ""
 
-    #: Output models, as ``{outputs attribute: model}``, checked by
-    #: :meth:`run`. A ``None`` attribute is skipped.
     models: dict = {}
 
     def __init__(self, outdir: str, prefix: str) -> None:
-        # Created here, not in the CLI, so a stage can run on its own.
         self.outdir = check_outdir(outdir)
         self.prefix = prefix
         self.paths = ScreeningPaths(outdir=self.outdir, prefix=prefix)
@@ -108,7 +105,6 @@ class Stage(ABC):
         )
         return outputs
 
-    # -- helpers for subclasses -------------------------------------------
     @staticmethod
     def _rename(produced: str, canonical: str) -> str:
         """Move a step class's output to its canonical name.

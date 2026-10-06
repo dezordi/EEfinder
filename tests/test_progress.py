@@ -112,7 +112,6 @@ class TestRunWithRetries:
         monkeypatch.setattr(progress, "show_progress", lambda stream=None: False)
         monkeypatch.setattr(progress, "RETRY_BACKOFF", 0)
         marker = tmp_path / "attempts"
-        # Fails the first time, succeeds once the marker exists.
         command = [
             "sh",
             "-c",
@@ -242,14 +241,12 @@ class TestOutputIsForwardedImmediately:
         monkeypatch.setattr(sys, "stderr", stream)
 
         start = time.monotonic()
-        # Six characters, far below any read buffer, then a long pause.
         run_streaming(["sh", "-c", "printf Valida; sleep 2"], stall_timeout=None)
         finished = time.monotonic()
 
         assert stream.writes, "nothing was mirrored"
         first_write, text = stream.writes[0]
         assert "Valida" in text
-        # It reached the terminal about when it was printed, not at exit.
         assert first_write - start < 1.0
         assert finished - first_write > 1.0
 
@@ -271,8 +268,6 @@ class TestExitIsDetectedWithoutEndOfFile:
     def test_the_run_ends_when_the_command_exits(self, monkeypatch):
         monkeypatch.setattr(progress, "show_progress", lambda stream=None: False)
         start = time.monotonic()
-        # The shell exits immediately; the backgrounded sleep inherits stdout and
-        # keeps the pipe open for 10s.
         returncode, output = run_streaming(
             ["sh", "-c", "sleep 10 & printf finished"], stall_timeout=None
         )
@@ -304,8 +299,6 @@ class TestStandardInputIsClosed:
     def test_a_command_reading_stdin_still_finishes(self, monkeypatch, mirrored):
         monkeypatch.setattr(progress, "show_progress", lambda stream=None: mirrored)
         start = time.monotonic()
-        # `cat` reads stdin until end-of-file; with stdin left open it would
-        # never return.
         returncode, output = run_streaming(
             ["sh", "-c", "printf 'Validating 100%%'; cat"], stall_timeout=None
         )
@@ -325,7 +318,6 @@ class TestRetryEnvironment:
         monkeypatch.setattr(progress, "show_progress", lambda stream=None: False)
         monkeypatch.setattr(progress, "RETRY_BACKOFF", 0)
         marker = tmp_path / "attempt"
-        # Fails until GODEBUG is set, which is what the fallback provides.
         command = [
             "sh",
             "-c",
@@ -351,4 +343,4 @@ class TestRetryEnvironment:
             attempts=2,
             retry_env=lambda out: seen.append(out) or None,
         )
-        assert seen  # the hook was consulted
+        assert seen

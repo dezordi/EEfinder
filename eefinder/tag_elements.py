@@ -3,8 +3,9 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+from eefinder.get_taxonomy import PROTEIN_ID_SEPARATOR
+from eefinder.lineage import merge_key
 
-#: Coordinate slack (nt) within which two elements are considered overlapping.
 OVERLAP_MARGIN = 100
 
 
@@ -14,17 +15,17 @@ def _list_to_string(overlaped_elements: list) -> str:
 
 
 def _average_pident(protein_ids: str) -> float:
-    """Return the mean percent identity encoded in a ``Protein-IDs`` value.
+    """Return the mean percent identity encoded in a ``protein_ids`` value.
 
-    The field looks like ``"ACC1|30.0 | ACC2|45.0"``; each ``|``-separated
-    token carries the hit's identity as its second element.
+    The field looks like ``"ACC1|30.0;ACC2|45.0"``; each entry carries the
+    hit's identity after its ``|``.
 
     Returns
     -------
     float
         The rounded mean identity, or ``nan`` when no identity is present.
     """
-    entries = str(protein_ids).split(" | ")
+    entries = str(protein_ids).split(PROTEIN_ID_SEPARATOR)
     values = [float(entry.split("|")[1]) for entry in entries if "|" in entry]
     return round(np.mean(values), 1) if values else np.nan
 
@@ -34,10 +35,10 @@ class TagElements:
 
     Adds two columns in a single pass over the table:
 
-    * ``Overlaped_Element_ID`` / ``tag`` — elements on the same contig within
+    * ``overlaped_element_id`` / ``tag`` — elements on the same contig within
       :data:`OVERLAP_MARGIN` of each other but assigned to a *different* family
       are cross-referenced and tagged ``"overlaped"``; the rest are ``"unique"``.
-    * ``Average_pident`` — the mean percent identity of the element's hits.
+    * ``average_pident`` — the mean percent identity of the element's hits.
 
     Overwrites ``tax_file`` in place. Runs on instantiation.
 
@@ -53,8 +54,13 @@ class TagElements:
         self.tag_elements()
 
     def _coordinates(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Extract contig/start/end/family from the ``Element-ID`` column."""
-        element_id = df["Element-ID"]
+        """Extract contig/start/end/taxon from the table.
+
+        The taxon is the family when the lineage has one, otherwise the lineage
+        itself, so overlaps between unclassified viruses are only called within
+        one lineage.
+        """
+        element_id = df["element_id"]
         return pd.DataFrame(
             {
                 "id": element_id,
@@ -63,15 +69,14 @@ class TagElements:
                 .str.replace(".*:", "", regex=True)
                 .astype(int),
                 "end": element_id.str.replace(".*-", "", regex=True).astype(int),
-                "family": df["Family"],
+                "family": df["taxonomy"].map(lambda t: merge_key(t, "family")),
             }
         )
 
     def tag_elements(self) -> None:
         """Compute overlap tags and average identity, then rewrite the file."""
         df = pd.read_csv(self.tax_file, sep="\t")
-        # Element IDs may carry a "PREFIX/" — drop it so coordinates parse.
-        df["Element-ID"] = df["Element-ID"].str.replace(".*/", "", regex=True)
+        df["element_id"] = df["element_id"].str.replace(".*/", "", regex=True)
 
         coords = self._coordinates(df)
         overlaps = []
@@ -87,8 +92,8 @@ class TagElements:
             ]
             overlaps.append(_list_to_string(matched))
 
-        df["Overlaped_Element_ID"] = overlaps
-        df["tag"] = np.where(df["Overlaped_Element_ID"] == "", "unique", "overlaped")
-        df["Average_pident"] = df["Protein-IDs"].apply(_average_pident)
+        df["overlaped_element_id"] = overlaps
+        df["tag"] = np.where(df["overlaped_element_id"] == "", "unique", "overlaped")
+        df["average_pident"] = df["protein_ids"].apply(_average_pident)
 
         df.to_csv(self.tax_file, sep="\t", index=False, header=True)

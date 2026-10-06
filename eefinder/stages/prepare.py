@@ -13,7 +13,6 @@ from eefinder.make_database import MakeDB
 from eefinder.stages.base import Stage, StageOutputs
 from eefinder.utils import check_metadata_file
 
-#: Missing accessions quoted in the error message.
 _REPORTED_MISSING = 5
 
 
@@ -202,7 +201,7 @@ class PrepareInputs(Stage):
             )
 
         outputs = PrepareInputsOutputs(
-            step_info=None,  # filled in by Stage.run
+            step_info=None,
             database=self.database,
             dbmetadata=self.dbmetadata,
             hostgenesbaits=self.hostgenesbaits,

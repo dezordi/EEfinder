@@ -1,63 +1,111 @@
 # EEfinder bundled data
 
-## `viral_proteins.tsv` — viral protein-name standardization map
+## `protein_rules.yaml` — protein-name normalisation rules
 
-A starting reference to normalise the free-text `Protein` names found in the
-viral database metadata (built by `eefinder get-databases virus`) into a small
-set of canonical names.
+Normalises the free-text `Protein` names of a RefSeq download (`eefinder
+get-databases`) into a small set of canonical names. Loaded by
+`eefinder/normalization.py` (`standardize_protein`).
 
 This is intentionally **not** exhaustive — it covers the most frequent /
-biologically relevant proteins and is meant to be extended.
+biologically relevant proteins and is meant to be extended. Everything is data:
+adding a term never requires a code change.
 
-The map is loaded by `eefinder/normalization.py` (`standardize_protein`, target
-`virus`).
+### The three kinds of adjustment
 
-### Columns
+The file has one section per kind, applied in this order:
 
+| Section | What it does | Shape |
+|---------|--------------|-------|
+| `typos` | whole-word spelling corrections, everywhere | correct spelling -> list of misspellings |
+| `rewrites` | ordered regex edits to the *shape* of a name | list of `pattern` / `replacement` / `notes` |
+| `proteins` | synonym -> canonical name | nested under the scopes the rule applies in |
+
+A **typo** says a word is misspelled; a **rewrite** says a name is
+*shaped* wrong (a redundant suffix, a reversed designation, a fused word); a
+**protein** rule says one name *means* another. Reach for the narrowest one.
+
+### `typos`
+
+```yaml
+typos:
+  glycoprotein:
+    - glyocprotein   # transposition
+    - gylcoprotein   # transposition
 ```
-suggested_name <TAB> current_name <TAB> match_type <TAB> molecule_type_scope <TAB> notes
+
+Keyed by the **correct** spelling, so every misspelling of one word sits
+together. Matching is whole-word and case-insensitive, and the correction is
+applied both to the match key (so it reaches a `proteins` rule) and to the
+emitted name (so typo variants of an *unmapped* protein still converge). Because
+it is whole-word, a typo that is a prefix of the correct spelling (`membran` ->
+`membrane`) does not corrupt the already-correct word.
+
+### `rewrites`
+
+```yaml
+rewrites:
+  - pattern: '\b(orf\s*\d+[a-z]?)\s+protein\b'
+    replacement: \1
+    notes: an ORF designation already says it is a protein
 ```
 
-- **suggested_name** — the canonical name emitted when the rule matches.
-- **current_name** — the already-normalised key to match against (lower-case,
-  separators collapsed; see below).
-- **match_type** — `exact` or `contains` (see step 2).
-- **molecule_type_scope** — restricts the rule to a genome group (see shorthand).
-- **notes** — free-text documentation for the rule (optional).
+Python regexes, applied **in file order** with `re.IGNORECASE`; `replacement`
+takes `\1`-style group references and may be empty (a deletion). They run after
+the typo corrections, so a pattern may rely on the corrected spelling. Since
+`re.IGNORECASE` is on, use an un-ignored group — `(?-i:[A-Z])` — when a rule has
+to be case-sensitive.
 
-### How the table is applied
+### `proteins`
 
-1. **Normalise** the raw `Protein` string before matching:
-   - remove leaked NCBI `[key=value]` tags (e.g. `[organism=...]`);
-   - strip a leading `CDS:` / `ORF:` naming directive;
-   - normalise molecular-weight tokens (`33 kDa`, `33-kDa`, `33K-like protein`
-     → `33 kDa protein`);
-   - fix common misspellings (e.g. `membran` → `membrane`);
-   - lowercase;
-   - replace hyphens/underscores AND compound separators `/\();,` with a single
-     space (so `CP/RdRp fusion`, `...; RdRp` become matchable tokens);
-   - collapse runs of whitespace to one space; strip ends;
-   - strip leading qualifiers: `putative`, `predicted`, `probable`, `possible`,
-     `presumed`, `presumptive` (also from the emitted name);
-   - strip trailing `, partial` / ` precursor`.
+```yaml
+proteins:
+  Chuviridae:           # taxon scope: a taxon name at any rank, or "any"
+    "-ssRNA":           # molecule_type scope (table below), or "any"
+      Glycoprotein:     # the canonical name emitted
+        exact:          # match type
+          - s protein
+        contains:
+          - g protein
+        regex:
+          - ^gp\d+$
+```
 
-   e.g. `Putative RNA-dependent RNA Polymerase` → `rna dependent rna polymerase`.
+The nesting **is** the scope, so it is stated once for a whole group of terms
+instead of being repeated per term.
 
-2. **Match** against `current_name` (already normalised in this file):
-   - `match_type=exact` — the normalised string equals `current_name`;
-   - `match_type=contains` — `current_name` occurs as a whole-word substring.
+Keys are matched against the name after normalisation: lower-cased, hyphens,
+underscores and the compound separators `/\();,` replaced by single spaces,
+whitespace collapsed, leading `putative`/`predicted`/… and trailing `, partial`
+/ ` precursor` stripped. So `Putative RNA-dependent RNA Polymerase` is matched as
+`rna dependent rna polymerase` — write the keys in that form.
 
-   Prefer `exact` for short/ambiguous names (e.g. `l`, `n`, `cp`) so that, for
-   example, `rna polymerase sigma factor` (a phage enzyme) does **not** become
-   RdRp. On the **output** name, quotes and the characters `:,/\?!` are removed,
-   the first letter is capitalised, and a name that is only a directive becomes
-   `Unknown`.
+| Match type | Meaning |
+|------------|---------|
+| `exact` | the normalised name equals the key |
+| `contains` | the key occurs in it as a whole-word substring |
+| `regex` | a Python regex, searched against it (case already folded) |
 
-3. **Scope** — only apply the row when the record's `Molecule_type` is within
-   `molecule_type_scope`; rows scoped to a group must not rewrite proteins from
-   other groups.
+Prefer `exact` for short or ambiguous keys (`l`, `n`, `cp`, `g`) so that, say,
+`rna polymerase sigma factor` (a phage enzyme) does not become RdRp.
 
-### `molecule_type_scope` shorthand
+#### Precedence
+
+Explicit, not a consequence of the layout — regrouping the file cannot silently
+change results:
+
+1. rules restricted to a **taxon** beat rules scoped to `any`, which is how a
+   family that names a protein against its genome group's convention wins
+   (`coat protein` is the capsid in (+)RNA viruses but the nucleocapsid in
+   *Chuviridae*);
+2. `exact` beats `contains`/`regex`;
+3. the **earliest match** in the name, since a product string leads with the
+   protein's name (`nucleocapsid phosphoprotein` is a nucleocapsid protein);
+4. file order.
+
+#### `molecule_type` scope shorthand
+
+The record's `Molecule_type` comes from `ictv_genome_composition.tsv` via its
+family, so a rule scoped to a genome group never rewrites proteins of another.
 
 | Token    | Meaning                                                        |
 |----------|----------------------------------------------------------------|
@@ -70,23 +118,42 @@ suggested_name <TAB> current_name <TAB> match_type <TAB> molecule_type_scope <TA
 | `ssDNA`  | ssDNA                                                          |
 | `any`    | no restriction                                                |
 
+Several tokens may be `;`-joined (`+ssRNA; dsRNA`). Quote `"-ssRNA"` in YAML so
+it cannot be read as a list item.
+
+#### `taxon` scope
+
+A taxon name at **any** rank — family, order, genus — matched case-insensitively
+against the record's lineage, or `any` for no restriction. Several names may be
+`;`-joined. Scoping by family is the usual case; an order (`Jingchuvirales`)
+covers its families in one rule.
+
+> An NCBI placeholder node (`unclassified Chuviridae`) is not a taxon: the
+> lineage records the real family above it, and `molecule_type_for_family`
+> falls back to the stripped name. Write rules against the real name.
+
+### What is still in code
+
+The generic pipeline around the tables: leaked NCBI `[key=value]` tags are
+removed, a leading `CDS:`/`ORF:` directive is stripped, molecular-weight tokens
+are normalised (`33 kDa`, `33-kDa`, `33K-like protein` -> `33 kDa protein`),
+`NSxx protein` is reduced to `NSxx`, quotes and `:,/\?!` are removed from the
+output, the first letter is capitalised, a name that is only a directive becomes
+`Unknown`, and a name beginning with `hypothetical` (any spelling, via `typos`)
+is flagged `Unknown` and dropped from the FASTA and CSV.
+
 ### Row groupings (order in the file)
 
-- **RNA viruses** — RdRp (the worked example: the viral replicase / L protein;
-  `contains` catches compound names like `P2-RdRp`, `RdRp protein`, `CP/RdRp
-  fusion`, `...; RdRp`, `RdRp-like`), Nucleocapsid Protein, Phosphoprotein (P),
-  Matrix protein (M), Glycoprotein (envelope glycoprotein; covers RNA **and**
-  DNA viruses), Fusion (F) — kept **separate** from the generic glycoprotein,
-  Capsid / coat protein (CP), and other (+)RNA proteins.
-- **RT viruses** — Reverse Transcriptase, Gag, Env, integrase.
-- **dsDNA phages / large DNA viruses** — dominant in a whole-virome download;
-  structural naming is a large separate domain, so this is a representative
-  starter set to be expanded. Note: in dsDNA phages the major capsid protein
-  (MCP) is a different context from the (+)RNA/dsRNA capsid protein.
-- **Unresolved** — leading `CDS:`/`ORF:` naming directives are stripped in code
-  before matching; a name that is only such a directive (e.g. `CDS:`, `ORF`)
-  becomes `Unknown`. Names beginning with `hypothetical` (any spelling) are also
-  flagged `Unknown` and dropped from the FASTA and CSV.
+- **`any` taxon** — the group-wide vocabulary: RdRp (the worked example: the
+  viral replicase / L protein; `contains` catches compound names like `P2-RdRp`,
+  `RdRp protein`, `CP/RdRp fusion`), Nucleocapsid Protein, Phosphoprotein (P),
+  Matrix protein (M), Glycoprotein, Fusion (F) — kept **separate** from the
+  generic glycoprotein — Capsid / coat protein (CP), the other (+)RNA proteins,
+  the RT set (Reverse Transcriptase, Gag, Env, integrase), and a starter set for
+  dsDNA phages and large DNA viruses, where structural naming is a large
+  separate domain. Note that in dsDNA phages the major capsid protein (MCP) is a
+  different context from the (+)RNA/dsRNA capsid protein.
+- **Per-family sections** — only where a family disagrees with the above.
 
 ## `ictv_genome_composition.tsv` — ICTV genome-composition table
 

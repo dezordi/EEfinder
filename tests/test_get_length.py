@@ -10,7 +10,6 @@ def test_get_length_writes_id_and_length(fasta_factory):
 
     GetLength(str(fasta))
 
-    # GetLength appends the ".rn.fmt.lenght" suffix to the input path.
     lengths = {}
     with open(f"{fasta}.rn.fmt.lenght") as handle:
         for line in handle:

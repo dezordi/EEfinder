@@ -55,7 +55,6 @@ class TestPrepareGenome:
 
         records = list(SeqIO.parse(outdir / "Aaeg.rn.fmt", "fasta"))
         assert [record.id for record in records] == ["Aaeg/ctg1", "Aaeg/ctg3"]
-        # The whole original header is kept, prefixed once.
         assert records[0].description == "Aaeg/ctg1 first contig"
         assert (step.total, step.kept) == (3, 2)
 

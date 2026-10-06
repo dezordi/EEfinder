@@ -1,0 +1,375 @@
+# EEfinder protein-name normalisation rules.
+#
+# Three kinds of adjustment, applied in this order by eefinder/normalization.py:
+#   typos     -- whole-word spelling corrections, applied everywhere
+#   rewrites  -- ordered regex edits to the name's shape
+#   proteins  -- synonym -> canonical name, nested under the scopes it applies in
+#
+# See README.md in this directory for the full contract.
+
+typos:
+  polymerase:
+    - polymeras  # truncated
+    - polymrease  # transposition
+    - polymarase  # a/e swap
+    - polymerse  # dropped letter
+    - polymease  # dropped letter
+    - polyermase  # transposition
+    - polyermaser  # transposition + stray r ("RNA-dependent RNA polyermaser")
+    - polymelase
+    - polmerase
+    - polymverase
+    - polymearase
+    - polyerase
+    - polymerasa
+    - polimerase
+    - polynerase
+    - polyperase
+    - polymrase
+    - polemerase
+    - polymersase
+    - olymerase  # truncated
+  nucleocapsid:
+    - nucleocapside  # trailing e
+    - nucleopasid  # dropped c
+    - nucleicapsid  # i/o swap
+    - nucleocapid  # dropped s ("N putative nucleocapid")
+    - nuclecapsid
+    - neucleocapsid
+    - nuleocapsid
+    - nucleopcapsid
+    - nuceocapsid
+    - nucreocapsid
+    - nucleocapsin
+    - nuclocapsid
+  capsid:
+    - capside  # trailing e
+    - caspsid  # transposition
+    - capid
+    - capsin
+  polyprotein:
+    - polyprotien  # transposition
+    - polyportein  # transposition
+    - plyprotein  # dropped o
+  membrane:
+    - membran  # truncated
+    - membraine  # extra i
+    - membrain  # dropped e
+  phosphoprotein:
+    - phoshoprotein  # dropped p
+    - phosphorprotein
+    - phospoprotein
+    - phosophoprotein
+    - phosphprotein
+    - phosphosprotein
+    - phophoprotein
+    - phosphorotein
+  hypothetical:
+    - hypotheticla  # transposition
+    - hypotheticl  # dropped a
+    - hyphothetical  # extra h
+    - hypotetical  # dropped h
+    - hypothecial  # mangled
+    - hyppothetical  # doubled p
+    - hypothtetical  # transposition; joins the "hypothetical*" drop
+  glycoprotein:
+    - glycoprot  # truncated
+    - glycop  # truncated
+    - glyciprotein  # o/i swap
+    - glycotrotein  # p/t swap
+    - glycpprotein  # o/p swap
+    - glyocprotein  # transposition
+    - glyoprotein  # dropped c
+    - gylcoprotein  # transposition
+    - glicoprotein
+    - glucoprotein
+    - glytoprotein
+    - gycoprotein
+  phospho glycoprotein:
+    - phosphoglycoprotein  # fused prefix; split so the contains-match finds it
+  protein glycoprotein:
+    - proteinglycoprotein  # fused prefix; split so the contains-match finds it
+  dependent:
+    - dpendent  # dropped e ("RNA-dpendent RNA polymerase")
+    - depedent
+    - denpendent
+    - dependet
+    - depentent
+    - dependend
+    - depemdent
+    - dependart
+    - depenedent
+  nucleoprotein:
+    - nucleprotein  # dropped o
+    - nucleoproteinn  # doubled n
+    - nucleotprotein  # stray t
+    - nucloprotein  # dropped e
+    - nulcleoprotein  # transposition
+    - nucleocoprotein  # mangled
+    - nucleo  # truncated to the bare prefix
+    - nuleoprotein
+    - nucleopprotein
+  matrix:
+    - matix  # dropped r
+    - mamtrix  # stray m ("M2 protein mamtrix protein")
+  matrix protein:
+    - matrixprotein  # fused words
+  movement protein:
+    - movementprotein  # fused words
+  reverse:
+    - revrse
+  transcriptase:
+    - transciptase
+    - trascriptase
+    - transriptase
+    - trancriptase
+  major:
+    - mojor
+    - mayor
+  subunit:
+    - subunuit
+    - subunt
+  terminase:
+    - erminase  # truncated
+  length:
+    - lenth
+  baseplate:
+    - base plate  # split words
+  tape measure:
+    - tapemeasure  # fused words
+  large subunit:
+    - largesubunit  # fused words
+  major capsid:
+    - majorcapsid  # fused words
+rewrites:
+  - pattern: "\\s+unknown(?:\\s+in\\s+function)?\\s+protein\\b"
+    replacement: ""
+    notes: "drop an \"unknown protein\" tail appended to a named protein (\"14 kDa protein unknown protein\" -> \"14 kDa protein\"); a bare \"unknown protein\" has nothing before it and is kept"
+  - pattern: "\\b(orf\\s*\\d+[a-z]?)\\s+protein\\b"
+    replacement: \1
+    notes: "an ORF designation already says it is a protein (\"ORF3 protein\" -> \"ORF3\")"
+  - pattern: "^\\s*protein\\s+([a-z]{1,2}\\d{0,2})\\s*$"
+    replacement: \1 protein
+    notes: "reversed one-token designation (\"Protein L\" -> \"L protein\", \"Protein M1\" -> \"M1 protein\"), so it meets the rules written for the usual order"
+  - pattern: "\\b(?:putative|putatively|predicted|probable|possible|presumed|presumptive)\\s+"
+    replacement: ""
+    notes: "drop a hedging qualifier wherever it sits, not only at the front (\"Matrix putative protein\" -> \"Matrix protein\"); \"hypothetical\" is deliberately absent, since it is what marks a product as uninformative"
+  - pattern: "protein(?=(?-i:[A-Z]))"
+    replacement: "protein "
+    notes: "split a word fused onto \"protein\" by an NCBI submitter (\"G proteinGFP fusion protein\" -> \"G protein GFP fusion protein\"); the case test is un-ignored so \"proteins\" is left alone"
+
+proteins:
+  any:
+    RNA:
+      RdRp:
+        contains:
+          - rdrp  # any name containing "RdRp" (case-insensitive after normalisation)
+          - rna dependent rna polymerase  # spelled-out; also inside compound names
+          - rna directed rna polymerase  # NCBI variant spelling
+          - rna dependant rna polymerase  # common misspelling ("dependant")
+          - rna dependent polymerase  # NCBI variant omitting the second "RNA"
+        exact:
+          - rna polymerase  # exact only: avoids "rna polymerase sigma factor/beta subunit" in phages
+          - polymerase  # bare "Polymerase" in an RNA virus is the replicase; DNA groups are excluded by the scope
+          - polymerase protein
+          - viral polymerase
+      Helicase:
+        exact:
+          - helicase
+      Movement protein:
+        contains:
+          - movement protein  # compound forms ("MP putative movement protein", "cell-to-cell movement protein")
+        exact:
+          - movement function
+    "-ssRNA":
+      RdRp:
+        contains:
+          - l polymerase  # (-)RNA "L polymerase" / "L polymerase protein" / "L polymerase RdRp"
+          - l protein  # compound forms ("L protein viral polymerase", "polymerase (L) protein")
+          - large polymerase  # "Large polymerase protein", "Large polymerase subunit protein"
+          - large transcriptase
+          - large protein  # numbered forms ("Large protein 1", "Large protein 2")
+        exact:
+          - l protein  # compound forms ("L protein viral polymerase", "polymerase (L) protein")
+          - l  # single-letter L; exact + scope is mandatory
+          - large protein  # numbered forms ("Large protein 1", "Large protein 2")
+          - large structural protein
+          - l polyprotein  # (-)RNA "L polyprotein" carries the RdRp
+          - large rna polymerase protein
+          - l gene  # the (-)RNA "L gene" product is the polymerase
+      Nucleocapsid Protein:
+        exact:
+          - n protein
+          - n  # single-letter N; exact + scope mandatory
+      Phosphoprotein:
+        contains:
+          - phosphoproteins   # plural variant
+          - phosphoprotein  # catches "putative phosphoprotein", "phosphoprotein P"
+        exact:
+          - p protein
+      Matrix protein:
+        contains:
+          - matrix protein  # catches "putative matrix protein", "matrix protein M/1/2"
+        exact:
+          - matrix
+          - m protein
+      Glycoprotein:
+        exact:
+          - g protein  # single-letter G designation; exact + scope mandatory
+      Fusion Protein:
+        exact:
+          - fusion protein  # paramyxo/pneumo F; do not merge into G
+          - fusion glycoprotein
+    +ssRNA/Coronaviridae:
+      RdRp:
+        exact:
+          - nsp12  # coronavirus RdRp subunit
+    any:
+      Nucleocapsid Protein:
+        contains:
+          - nucleocapsid  # any "...nucleocapsid..." name (e.g. "structural nucleocapsid protein", "nucleocapsid protein p3/N", "50 kDa protein nucleocapsid protein")
+          - nucleoprotein  # any "...nucleoprotein..." name (e.g. "nucleoprotein N", "pre-histone-like nucleoprotein")
+      Glycoprotein:
+        contains:
+          - glycoprotein  # any "...glycoprotein..." name (envelope/membrane/surface/spike/EEV/structural/non-structural, GP1-5, etc.)
+          - glycoproteins  # plural form
+          - spike  # "spike", "spike protein", "spike structural protein", "tail spike protein"
+    +ssRNA; dsRNA:
+      Capsid Protein:
+        contains:
+          - capsid  # any "...capsid..." name (e.g. "capsid", "capsid protein C", "capsid (core) protein", "capsid prot")
+          - coat protein  # catches "putative coat protein", "major coat protein", "minor coat protein"
+        exact:
+          - cp  # abbreviation; exact + scope mandatory
+          - major capsid protein  # NOTE: in dsDNA phages MCP is a different context (see below)
+    +ssRNA:
+      Polyprotein:
+        exact:
+          - polyprotein  # NOTE: a precursor, not a mature product; flag for splitting
+      Movement protein:
+        exact:
+          - movement protein  # plant viruses
+      VPg:
+        exact:
+          - vpg  # genome-linked protein
+        contains:
+          - genome linked protein
+      Main Protease:
+        exact:
+          - 3c proteases   # plural variant
+          - main protease
+          - 3c like protease
+          - 3c protease
+      Helicase:
+        exact:
+          - ci protein  # potyvirus cylindrical inclusion = helicase
+    RT:
+      Reverse Transcriptase:
+        contains:
+          - reverse transcriptases   # plural variant
+          - reverse transcriptase  # catches "putative reverse transcriptase"
+        exact:
+          - rt  # exact + scope mandatory
+          - pol protein
+          - pol
+          - pol polyprotein
+      Gag:
+        exact:
+          - gag protein
+          - gag
+          - gag polyprotein
+      Env:
+        exact:
+          - env protein
+          - envelope protein
+          - env
+    RT; dsDNA:
+      Integrase:
+        contains:
+          - integrase  # catches "putative integrase", "site-specific integrase", "phage integrase"
+    dsDNA:
+      Major Capsid Protein:
+        exact:
+          - major capsid protein
+      Portal Protein:
+        exact:
+          - portal protein
+      Terminase Large Subunit:
+        contains:
+          - terminase large subunit
+      Terminase Small Subunit:
+        exact:
+          - terminase small subunit
+      Tail Fiber Protein:
+        contains:
+          - tail fibers   # plural variant
+        exact:
+          - tail fiber protein
+      Tape Measure Protein:
+        contains:
+          - tape measure
+      Baseplate Protein:
+        exact:
+          - baseplate wedge subunit
+          - baseplate hub
+      Endolysin:
+        exact:
+          - endolysin  # lysis
+      Holin:
+        exact:
+          - holin  # lysis
+      Spanin:
+        exact:
+          - rz like spanin  # lysis
+      DNA Primase:
+        exact:
+          - dna primase
+      DNA Helicase:
+        exact:
+          - dna helicase
+    dsDNA; ssDNA:
+      DNA Polymerase:
+        exact:
+          - dna polymerase
+
+  Chuviridae:
+    "-ssRNA":
+      Glycoprotein:
+        exact:
+          - g  # single-letter G designation
+          - envelope protein  # the chuvirus envelope protein is the glycoprotein (globally "envelope protein" is the RT Env)
+          - s protein  # not the coronavirus spike
+          - gp4
+        contains:
+          - g protein  # compound forms
+      Nucleocapsid Protein:
+        exact:
+          - coat protein  # chuviruses have no separate coat protein (globally "coat protein" is the (+)RNA/dsRNA capsid)
+          - capsid protein
+
+  Rhabdoviridae:
+    "-ssRNA":
+      Glycoprotein:
+        exact:
+          - g  # single-letter G designation
+          - gp
+          - envelope protein  # the rhabdovirus envelope protein is G (globally "envelope protein" is the RT Env)
+        contains:
+          - g protein  # compound forms ("G proteinGFP fusion protein", "truncated G protein")
+      Matrix protein:
+        exact:
+          - m  # single-letter M designation
+          - m polyprotein
+          - membrane protein  # the rhabdovirus membrane protein is M
+        regex:
+          - "^m\\d+\\b.*"  # numbered matrix proteins ("M1 protein", "M2 protein", "M1 protein phosphorylated protein")
+      Nucleocapsid Protein:
+        exact:
+          - n capsid protein  # the hedging qualifier of "N putative capsid protein" is dropped before matching
+          - nucleprotein n  # kept for the record; the typo table already reaches it
+
+  Xinmoviridae:
+    "-ssRNA":
+      RdRp:
+        contains:
+          - l protein

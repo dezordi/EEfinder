@@ -15,20 +15,20 @@ from eefinder.models import (
 
 def test_table_model_accepts_a_conforming_header(tmp_path):
     path = tmp_path / "table.tsv"
-    path.write_text("Element-ID\tSense\tother\nx\tpos\t1\n")
+    path.write_text("element_id\tsense\tother\nx\tpos\t1\n")
 
-    model = TableModel(name="demo", columns=("Element-ID", "Sense"))
+    model = TableModel(name="demo", columns=("element_id", "sense"))
 
-    assert model.validate(str(path)) is None  # no exception
+    assert model.validate(str(path)) is None
 
 
 def test_table_model_names_the_missing_columns(tmp_path):
     path = tmp_path / "table.tsv"
-    path.write_text("Element-ID\n x\n")
+    path.write_text("element_id\n x\n")
 
-    model = TableModel(name="demo", columns=("Element-ID", "Sense", "Host"))
+    model = TableModel(name="demo", columns=("element_id", "sense", "host"))
 
-    with pytest.raises(ModelError, match="Sense, Host"):
+    with pytest.raises(ModelError, match="sense, host"):
         model.validate(str(path))
 
 
@@ -44,14 +44,13 @@ def test_table_model_rejects_extra_columns_when_asked(tmp_path):
 
 def test_headerless_model_counts_fields(tmp_path):
     path = tmp_path / "hits.tsv"
-    path.write_text("q\ts\t30.0\n")  # only 3 of the 12 outfmt6 fields
+    path.write_text("q\ts\t30.0\n")
 
     with pytest.raises(ModelError, match="expected at least 12"):
         HIT_TABLE.validate(str(path))
 
 
 def test_headerless_model_accepts_outfmt6(tmp_path, blast_outfmt6):
-    # The shared fixture writes a real outfmt6 table.
     assert HIT_TABLE.validate(str(blast_outfmt6)) is None
 
 
@@ -104,7 +103,6 @@ def test_validate_all_skips_none_paths(tmp_path):
     path = tmp_path / "table.tsv"
     path.write_text("\t".join(ELEMENT_TABLE.columns) + "\n")
 
-    # None marks an output the run's options switched off.
     assert validate_all([(ELEMENT_TABLE, str(path)), (ELEMENT_TABLE, None)]) is None
 
 

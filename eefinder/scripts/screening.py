@@ -53,7 +53,6 @@ class DefaultGroup(click.Group):
         return super().parse_args(ctx, args)
 
 
-# -- option groups -----------------------------------------------------------
 def _outdir_options(func):
     """Attach the -od/-pr options."""
     func = click.option(
@@ -215,7 +214,6 @@ def _common_options(func):
     return func
 
 
-# -- helpers -----------------------------------------------------------------
 def _resolve_prefix(prefix, genome_file=None):
     """Return the run prefix, deriving it from the genome file when omitted."""
     if prefix:
@@ -261,7 +259,6 @@ def screening():
     """Run the EEfinder screening pipeline, whole or one stage at a time."""
 
 
-# -- stage 0 -----------------------------------------------------------------
 @screening.command(name="prepare")
 @_database_options
 @_outdir_options
@@ -317,7 +314,6 @@ def prepare_cmd(
     )
 
 
-# -- stage I -----------------------------------------------------------------
 @screening.command(name="clean")
 @click.option(
     "-in",
@@ -350,7 +346,6 @@ def clean_cmd(genome_file, outdir, prefix, length, versions_yml, versions_key, d
     )
 
 
-# -- stage II ----------------------------------------------------------------
 @screening.command(name="align")
 @click.option(
     "--genome",
@@ -402,7 +397,6 @@ def align_cmd(
     )
 
 
-# -- stage III ---------------------------------------------------------------
 @screening.command(name="filter")
 @click.option(
     "--candidates",
@@ -462,7 +456,6 @@ def filter_cmd(
     )
 
 
-# -- stage IV ----------------------------------------------------------------
 @screening.command(name="taxonomy")
 @click.option(
     "--ee-hits-validated",
@@ -505,7 +498,6 @@ def taxonomy_cmd(
     )
 
 
-# -- stage V -----------------------------------------------------------------
 @screening.command(name="merge")
 @click.option(
     "--taxonomy-signature",
@@ -565,7 +557,6 @@ def merge_cmd(
     )
 
 
-# -- post-processing ---------------------------------------------------------
 @screening.command(name="postprocess")
 @click.option(
     "--ee-elements",
@@ -622,7 +613,6 @@ def postprocess_cmd(
     )
 
 
-# -- stage VI ----------------------------------------------------------------
 @screening.command(name="flanks")
 @click.option(
     "--ee-elements",
@@ -677,7 +667,6 @@ def _check_overlap_options(overlap, target_families, non_target_families):
         sys.exit(1)
 
 
-# -- every stage -------------------------------------------------------------
 @screening.command(name="all")
 @click.option(
     "-in",
@@ -769,7 +758,7 @@ def all_cmd(
     system_info = collect_system_info()
     try:
         dependencies = collect_dependency_versions(find_env_yml())
-    except Exception as err:  # pragma: no cover - defensive
+    except Exception as err:
         logger.warning(f"Could not collect dependency versions: {err}")
         dependencies = []
     report_run_context(system_info, dependencies)

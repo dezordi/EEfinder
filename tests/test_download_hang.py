@@ -23,8 +23,6 @@ from conftest import binaries_available
 
 PROTEIN = (
     ">YP_000001.1 glycoprotein [organism=Mivirus chuvi]\n"
-    # Longer than cd-hit's throw-away length (-l 10), which would silently
-    # discard it.
     "MKALLVGTSGAGKSTLLQALNRLYELDSGSIRIDG\n"
 )
 REPORT = json.dumps(
@@ -48,13 +46,12 @@ def hanging_datasets(tmp_path):
     script = tmp_path / "datasets"
     script.write_text(
         "#!/bin/sh\n"
-        # The real client takes --filename <path>; find it the same way.
         'while [ $# -gt 0 ]; do if [ "$1" = "--filename" ]; then out="$2"; fi;'
         " shift; done\n"
         f'cp "{package}" "$out"\n'
         'printf "Downloading: %s    104kB valid data package\\n" "$out"\n'
         'printf "Validating package files [====] 100%% 5/5\\n"\n'
-        "sleep 300\n"  # <- the behaviour that used to hang the pipeline
+        "sleep 300\n"
     )
     script.chmod(0o755)
     return str(script)
@@ -129,7 +126,6 @@ class TestArchiveCompleteness:
         start = time.monotonic()
         with pytest.raises(RuntimeError, match="stalled"):
             _download(tmp_path, str(script), stall_timeout=5, attempts=1)
-        # It gave up on the stall instead of accepting the partial file.
         assert time.monotonic() - start < 40
 
 
@@ -178,7 +174,6 @@ class TestHttp2Fallback:
             "#!/bin/sh\n"
             'while [ $# -gt 0 ]; do if [ "$1" = "--filename" ]; then out="$2"; fi;'
             " shift; done\n"
-            # Succeeds only once the client has been told to avoid HTTP/2.
             'if [ -z "$GODEBUG" ]; then\n'
             '  echo "Error: Download error: stream error: stream ID 3;'
             ' INTERNAL_ERROR; received from peer" >&2\n'
@@ -204,7 +199,7 @@ class TestBrokenArchives:
             " shift; done\n"
             'printf "not a zip at all" > "$out"\n'
             'printf "Downloading: %s    118MB invalid zip archive\\n" "$out"\n'
-            "exit 0\n"  # <- reports success anyway
+            "exit 0\n"
         )
         script.chmod(0o755)
 
@@ -222,8 +217,6 @@ class TestBrokenArchives:
         package = tmp_path / "package.zip"
         _write_package(str(package))
         script = tmp_path / "datasets"
-        # Refuses to run if the target already exists, which is what a resuming
-        # client effectively does with a stale file.
         script.write_text(
             "#!/bin/sh\n"
             'while [ $# -gt 0 ]; do if [ "$1" = "--filename" ]; then out="$2"; fi;'

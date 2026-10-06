@@ -61,7 +61,7 @@ failed), so `pytest -m "not integration"` runs cleanly on a bare Python install.
 - **`test_bed.py`** — `GetBed`, `RemoveAnnotation` and `GetAnnotBed` produce the
   expected BED coordinates and annotation strings.
 - **`test_tag_elements.py`** — `TagElements` flags overlapping vs unique
-  elements and computes `Average_pident`.
+  elements and computes `average_pident`.
 - **`test_gff.py`** — `WriteGFF3` emits a valid GFF3 (1-based coordinates,
   strand mapping, percent-escaped attributes, custom source/type).
 - **`test_versions.py`** — parsing `env.yml` pins and classifying detected vs

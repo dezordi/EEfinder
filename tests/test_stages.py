@@ -45,7 +45,6 @@ def test_final_outputs_and_intermediates_do_not_overlap():
     assert not set(paths.final_outputs()) & set(paths.intermediates())
 
 
-# -- the base class ----------------------------------------------------------
 @dataclass
 class _DemoOutputs(StageOutputs):
     genome: str
@@ -86,7 +85,6 @@ def test_run_creates_the_output_directory(tmp_path):
 
 
 def test_run_enforces_the_declared_models(tmp_path):
-    # Not a FASTA, so the declared model rejects it.
     with pytest.raises(ModelError, match="cleaned genome"):
         _DemoStage(str(tmp_path / "out"), "run", content="ACGT\n").run()
 
@@ -120,7 +118,6 @@ def test_rename_is_a_noop_for_the_same_path(tmp_path):
     stage = _DemoStage(str(tmp_path / "out"), "run")
     path = tmp_path / "same.txt"
 
-    # Not created on disk: an identical path must not be touched at all.
     assert stage._rename(str(path), str(path)) == str(path)
 
 
@@ -131,7 +128,6 @@ def test_rename_reports_a_missing_step_output(tmp_path):
         stage._rename(str(tmp_path / "absent"), str(tmp_path / "target"))
 
 
-# -- data cleaning (pure Python, so it runs without binaries) ----------------
 def test_data_cleaning_prefixes_and_filters(tmp_path, fasta_factory):
     genome = fasta_factory(
         "genome.fa", {"long_contig": "A" * 100, "short_contig": "A" * 10}
@@ -160,7 +156,6 @@ def test_data_cleaning_reports_a_missing_genome(tmp_path):
         stage.run()
 
 
-# -- input preparation -------------------------------------------------------
 def test_prepare_inputs_validates_without_indexing(
     tmp_path, fasta_factory, taxonomy_csv
 ):
@@ -219,7 +214,6 @@ def test_prepare_inputs_rejects_an_empty_database(tmp_path, taxonomy_csv):
 def test_database_pairing_accepts_a_fully_described_database(
     tmp_path, fasta_factory, taxonomy_csv
 ):
-    # Both accessions are in the metadata fixture.
     database = fasta_factory("db.fa", {"PROT_A": "MKV", "PROT_C": "MKV"})
 
     assert check_database_pairing(str(database), str(taxonomy_csv)) == 2
@@ -228,7 +222,6 @@ def test_database_pairing_accepts_a_fully_described_database(
 def test_database_pairing_allows_extra_metadata_rows(
     tmp_path, fasta_factory, taxonomy_csv
 ):
-    # The fixture also describes PROT_C; a database may be a subset.
     database = fasta_factory("db.fa", {"PROT_A": "MKV"})
 
     assert check_database_pairing(str(database), str(taxonomy_csv)) == 1

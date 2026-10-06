@@ -24,17 +24,16 @@ class ScreeningPaths:
 
     Example
     -------
-    >>> paths = ScreeningPaths(outdir="results", prefix="Aedes")
+    >>> paths = ScreeningPaths(outdir="results", prefix="run")
     >>> paths.cleaned_genome
-    'results/Aedes.cleaned_genome.fa'
+    'results/run.cleaned_genome.fa'
     >>> paths.ee_elements_tax
-    'results/Aedes.elements.tax.tsv'
+    'results/run.elements.tax.tsv'
     """
 
     outdir: str
     prefix: str
 
-    # -- helpers ----------------------------------------------------------
     def _p(self, suffix: str) -> str:
         return f"{self.outdir}/{self.prefix}.{suffix}"
 
@@ -113,7 +112,6 @@ class ScreeningPaths:
         """Return the taxonomy table, one row per merged element."""
         return self._p("elements.tax.tsv")
 
-    # -- post-processing ---------------------------------------------------
     @property
     def ee_elements_cleaned(self) -> str:
         """Return the elements surviving the soft-mask filter."""
@@ -149,7 +147,6 @@ class ScreeningPaths:
         """Return the element sequences plus their flanking regions."""
         return self._p("flanks.fa")
 
-    # -- published outputs (do not rename) --------------------------------
     @property
     def final_fasta(self) -> str:
         return self._p("EEs.fa")
@@ -178,7 +175,6 @@ class ScreeningPaths:
     def final_cleaned_gff3(self) -> str:
         return self._p("EEs.cleaned.gff3")
 
-    # -- housekeeping ------------------------------------------------------
     @property
     def tmp_dir(self) -> str:
         """Return the directory intermediates are archived in."""

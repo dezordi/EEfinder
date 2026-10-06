@@ -180,7 +180,7 @@ The full benchmark is reported in section 3.2 (*Benchmark of alignment tools*) o
 | `-mp/--mask_per` | `50` | Lowercase-percentage threshold to call a region repetitive. |
 | `-cm/--clean_masked` | off | Also emit mask-cleaned outputs (`*.cleaned.*`). |
 | `-an/--analysis` | `virus` | GFF3 feature type (`virus` → `endogenous_viral_element`, `bacteria` → `endogenous_bacterial_element`). |
-| `-pr/--prefix` | input filename | Prefix for output files and Element-IDs. |
+| `-pr/--prefix` | input filename | Prefix for output files and `element_id`s. |
 | `-rm/--removetmp` | off | Delete intermediates instead of archiving them under `tmp_files/`. |
 | `--debug` | off | Emit verbose debug logging (intermediate paths, per-step details). |
 

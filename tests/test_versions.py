@@ -45,8 +45,6 @@ def test_parse_env_versions_handles_conda_and_pip_pins(tmp_path):
 
 
 def test_collect_flags_matches_and_mismatches(tmp_path):
-    # Pin python/numpy to the actually-installed versions (-> ok) and pandas to
-    # a bogus one (-> mismatch); the external tools are left unpinned here.
     env = tmp_path / "env.yml"
     env.write_text(textwrap.dedent(f"""\
             dependencies:
@@ -61,14 +59,10 @@ def test_collect_flags_matches_and_mismatches(tmp_path):
     assert deps["numpy"].status == "ok"
     assert deps["pandas"].status == "mismatch"
     assert deps["pandas"].detected == pandas.__version__
-    # Tools absent from this env.yml are either unpinned (present on PATH) or
-    # not-found (absent) -- never a false "ok"/"mismatch".
     assert deps["bedtools"].status in {"unpinned", "not-found"}
 
 
 def test_collect_prefix_pin_matches_patch_version(tmp_path):
-    # A major.minor pin (e.g. "python=3.10") should match the running patch
-    # release ("3.10.x"), not report a spurious mismatch.
     major_minor = ".".join(platform.python_version().split(".")[:2])
     env = tmp_path / "env.yml"
     env.write_text(f"dependencies:\n  - python={major_minor}\n")
@@ -84,7 +78,6 @@ def test_collect_reports_all_dependencies_in_order(tmp_path):
 
 def test_collect_without_env_yml_is_unpinned(tmp_path):
     deps = {dep.name: dep for dep in collect_dependency_versions(None)}
-    # python is always detectable but has no expected version to compare to.
     assert deps["python"].detected == platform.python_version()
     assert deps["python"].expected is None
     assert deps["python"].status == "unpinned"
@@ -92,7 +85,6 @@ def test_collect_without_env_yml_is_unpinned(tmp_path):
 
 def test_collect_system_info_is_populated():
     info = collect_system_info()
-    # All fields are non-empty strings describing the host/OS.
     assert info.operating_system
     assert info.machine
     assert isinstance(info.hostname, str)

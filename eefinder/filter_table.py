@@ -6,7 +6,6 @@ import os
 import shutil
 import pandas as pd
 
-#: Standard BLAST/DIAMOND ``outfmt 6`` columns, in order.
 OUTFMT6_COLUMNS = [
     "qseqid",
     "sseqid",
@@ -22,13 +21,10 @@ OUTFMT6_COLUMNS = [
     "bitscore",
 ]
 
-#: Columns of the filtered table, i.e. outfmt6 plus EEfinder annotations.
 FILTERED_COLUMNS = OUTFMT6_COLUMNS + ["sense", "bed_name", "tag"]
 
-#: Minimum alignment length (aa) for a hit to be retained.
 MIN_HIT_LENGTH = 33
 
-#: Rows processed per chunk when streaming very large result tables.
 CHUNK_SIZE = 200_000
 
 
@@ -73,7 +69,6 @@ class FilterTable:
         df.loc[df["qstart"].astype(int) > df["qend"].astype(int), "sense"] = "neg"
         df.loc[df["qend"].astype(int) > df["qstart"].astype(int), "sense"] = "pos"
 
-        # Normalise negative-strand hits so start < end.
         neg = df["sense"] == "neg"
         df.loc[neg, ["qstart", "qend"]] = df.loc[neg, ["qend", "qstart"]].values
 
@@ -112,7 +107,6 @@ class FilterTable:
             (pd.read_csv(chunk, sep="\t") for chunk in glob.glob(f"{tmp_path}/*.tsv")),
             ignore_index=True,
         )
-        # Merge hits that share a strand and fall in the same coordinate window.
         filtered["qstart_rng"] = filtered.qstart.floordiv(self.rangejunction)
         filtered["qend_rng"] = filtered.qend.floordiv(self.rangejunction)
         filtered = filtered.drop_duplicates(

@@ -30,8 +30,6 @@ class CompareResults:
     def compare_results(self) -> None:
         """Merge, deduplicate by query and retain the EE-only best hits."""
         df_vir = pd.read_csv(self.vir_result, sep="\t")
-        # Align the viral queries on their coordinate-tagged bed name so they
-        # collide with the host hits extracted from the same region.
         df_vir["qseqid"] = df_vir["bed_name"]
         df_host = pd.read_csv(self.host_result, sep="\t")
 

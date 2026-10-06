@@ -20,7 +20,6 @@ from eefinder.log import logger
 from eefinder.similarity_analysis import SimilaritySearch
 from eefinder.translation import TRANSLATION_METHODS
 
-#: Registered search methods, by name.
 SEARCH_METHODS: "Dict[str, Type[SearchMethod]]" = {}
 
 

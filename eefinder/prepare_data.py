@@ -56,8 +56,8 @@ class InsertPrefix:
 def prefix_record(record, prefix: str):
     """Prefix a record's id and description with ``{prefix}/``.
 
-    Both are set so that Biopython writes the header exactly as the two-step
-    path did: the whole original header line, prefixed once.
+    Both are set, so Biopython writes the whole original header line
+    prefixed once.
     """
     record.description = f"{prefix}/{record.description}"
     record.id = f"{prefix}/{record.id}"

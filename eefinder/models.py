@@ -146,52 +146,41 @@ class FastaModel:
         logger.debug(f"{self.name}: {path} is empty (allowed)")
 
 
-#: Hit table every search method must emit: BLAST ``outfmt 6``, tab-separated,
-#: no header, query coordinates in nucleotides on the cleaned genome.
 HIT_TABLE = TableModel(
     name="hit table (outfmt6)",
     columns=tuple(OUTFMT6_COLUMNS),
     header=False,
 )
 
-#: Hits after redundant-alignment collapsing: outfmt6 plus the EEfinder
-#: annotations (``sense``, ``bed_name``, ``tag``).
 FILTERED_HIT_TABLE = TableModel(
     name="filtered hit table",
     columns=tuple(FILTERED_COLUMNS),
     header=True,
 )
 
-#: Candidate element intervals: headerless BED3 on the cleaned genome.
 CANDIDATE_BED = TableModel(
     name="candidate BED",
     columns=("contig", "start", "end"),
     header=False,
 )
 
-#: Per-hit taxonomy signature: the filtered hits joined to the ``-mt`` metadata.
-#: Comma-separated, because it is written by pandas as a CSV.
 TAXONOMY_SIGNATURE = TableModel(
     name="taxonomy signature",
-    columns=("sseqid", "Species", "Genus", "Family", "Molecule_type", "Host"),
+    columns=("sseqid", "Taxonomy", "Molecule_type", "Host"),
     sep=",",
     header=True,
 )
 
-#: Per-element taxonomy table -- what the user reads as ``PREFIX.EEs.tax.tsv``.
 ELEMENT_TABLE = TableModel(
     name="element taxonomy table",
     columns=tuple(TAXONOMY_COLUMNS),
     header=True,
 )
 
-#: Candidate element sequences cut out of the cleaned genome.
 CANDIDATE_FASTA = FastaModel(name="candidate sequences")
 
-#: Merged element sequences.
 ELEMENT_FASTA = FastaModel(name="element sequences")
 
-#: The cleaned genome: the query of every search in a run.
 GENOME_FASTA = FastaModel(name="cleaned genome", allow_empty=False)
 
 

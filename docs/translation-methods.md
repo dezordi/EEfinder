@@ -47,7 +47,7 @@ strand).
 
 The practical consequence: the search table has the same format in every mode,
 so all the downstream steps and all the output files are identical in shape, and
-Element-IDs are always nucleotide coordinates. Only *which* proteins were
+`element_id`s are always nucleotide coordinates. Only *which* proteins were
 searched changes.
 
 ## Dependencies

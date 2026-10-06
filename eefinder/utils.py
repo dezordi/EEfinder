@@ -18,16 +18,11 @@ from eefinder.log import logger
 if TYPE_CHECKING:
     from eefinder.versions import DependencyVersion, SystemInfo
 
-#: Timestamp format used throughout the run log.
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-#: Columns the ``-mt`` metadata CSV must provide, in the order EEfinder uses
-#: them downstream.
 EXPECTED_METADATA_COLUMNS = [
     "Accession",
-    "Species",
-    "Genus",
-    "Family",
+    "Taxonomy",
     "Molecule_type",
     "Protein",
     "Host",
@@ -117,8 +112,8 @@ def check_metadata_columns(columns: list) -> list:
 def check_metadata_file(metadata_file: str) -> list:
     """Validate the header of the ``-mt`` metadata CSV.
 
-    Only the header row is read, so a malformed metadata file stops the run
-    before the similarity search starts rather than at the taxonomy step.
+    Only the header row is read, so the run stops before the similarity
+    search rather than at the taxonomy step.
 
     Parameters
     ----------
@@ -223,14 +218,13 @@ class DownloadArguments:
     exclude_uninformative: bool
     standardize_proteins: bool
     cluster: bool
-    #: Download robustness settings (retries and stall detection).
     attempts: int = 1
     stall_timeout: float = 0.0
     keep_download: bool = False
     released_before: str = ""
-    #: Taxa left out of the download entirely (never requested from NCBI).
     exclude_taxa: str = ""
     split_level: str = ""
+    include_unranked: bool = False
     threads: int = 1
 
 
