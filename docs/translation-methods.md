@@ -25,7 +25,7 @@ eefinder screening ... -tm gv-rv
 ## How the prediction path works
 
 ```{mermaid}
-flowchart LR
+flowchart TD
     A[Nucleotide query] --> B[predict_proteins<br/>pyrodigal-gv / -rv]
     B --> C[Predicted-protein FASTA]
     B --> D[Coordinates TSV<br/>protein_id, contig, start, end, strand, tool]

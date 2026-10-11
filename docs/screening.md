@@ -1,6 +1,6 @@
 # Running the pipeline (`screening`)
 
-`screening` is the EE-finding pipeline. It takes a genome FASTA plus the protein
+`screening` is the EE core logic itself. It takes a genome FASTA plus the protein
 database, its metadata CSV, and the host-gene baits, and produces the endogenous
 element sequences, taxonomy table, GFF3 annotation, and flanking regions.
 
@@ -21,7 +21,7 @@ so you can try the full pipeline end-to-end:
 From the repository root, with the `EEfinder` environment active:
 
 ```bash
-eefinder screening \
+eefinder screening all \
   -in test_files/Ae_aeg_Aag2_ctg_1913.fasta \
   -od results_test \
   -db test_files/virus_subset.fa \
@@ -43,12 +43,7 @@ eefinder screening \
 ## Pipeline steps
 
 `screening` is a command group. Invoked without a subcommand it runs the whole
-pipeline, exactly as before:
-
-```bash
-eefinder screening -in genome.fa -od results/ \
-  -db db/virus.fa -mt db/virus.csv -bt db/host.fa
-```
+pipeline.
 
 Each stage is also a subcommand of its own, so a pipeline can be driven step by
 step, resumed, or split across jobs:

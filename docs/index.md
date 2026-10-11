@@ -1,7 +1,7 @@
 # EEfinder Documentation
 
 **EEfinder** is a Python CLI and package for the identification of **Endogenous
-Elements (EEs)** — sequences of non-host origin integrated into eukaryotic
+Elements (EEs)**, sequences of non-host origin integrated into eukaryotic
 genomes, most commonly derived from viruses or bacteria. Its `screening`
 command takes a genome assembly and a reference protein database and returns the
 element sequences, their taxonomic assignment and their genomic flanking
@@ -14,7 +14,7 @@ It was published in the *Computational and Structural Biotechnology Journal*
 ## Main features
 
 Endogenous elements can be ancestral integrations, specially when we are looking
-for Endogenous Virus Elements (EVEs). Once inserted, they are no
+for Endogenous Viral Elements (EVEs). Once inserted, they are no
 longer under selection to maintain viral or bacterial function, so they can
 accumulate substitutions, indels and premature stop codons, and are frequently
 truncated or split apart by subsequent genomic rearrangements. Detecting them is
@@ -27,7 +27,7 @@ consequence of that.
   (`-mt`), and what counts as host background is set by the bait set (`-bt`).
   The published applications are viral and bacterial endogenization, but the
   same pipeline screens for elements from any donor lineage whose proteins can
-  be assembled into a FASTA — and, symmetrically, a search can be narrowed to a
+  be assembled into a FASTA and, symmetrically, a search can be narrowed to a
   single family or genus simply by restricting the database. Every taxonomic
   name in the output is copied from the user's metadata table; the tool has no
   internal source of taxonomy. See
@@ -91,7 +91,7 @@ consequence of that.
   [Translation methods](translation-methods.md).
 
 - **Reproducible reference data.** `get-databases` builds the `-db`/`-mt`/`-bt`
-  inputs from NCBI RefSeq with the `datasets` CLI, records the fate of every
+  inputs from NCBI with the `datasets` CLI, records the fate of every
   downloaded accession in a tracking table, and can bound a build to a date
   (`--released-before`) or leave a branch of the taxonomy out before it is ever
   downloaded (`--exclude-taxon`). See [Acquiring databases](get-databases.md).

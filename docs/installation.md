@@ -151,8 +151,8 @@ only. Install the external binaries first, then EEfinder itself:
 ```bash
 # 1. the binaries (conda-forge / bioconda)
 conda create -n EEfinder -c conda-forge -c bioconda \
-  "python>=3.9,<3.12" "blast>=2.5" "diamond>=2.0.15" "bedtools>=2.27" \
-  ncbi-datasets-cli cd-hit
+  "python>=3.9,<3.12" "blast==2.5.0" "diamond==2.0.15" \
+  "bedtools==2.27.1" "ncbi-datasets-cli==18.36.0" "cd-hit==4.8.1"
 conda activate EEfinder
 
 # 2. the package

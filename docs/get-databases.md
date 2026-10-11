@@ -10,9 +10,7 @@
 
 `get-databases` automates the manual NCBI RefSeq downloads (previously done by
 hand through the NCBI Virus web UI) using the
-[NCBI datasets](https://www.ncbi.nlm.nih.gov/datasets/) CLI. It is a **command
-group** with one subcommand per database, because each group has its own
-defaults and options.
+[NCBI datasets](https://www.ncbi.nlm.nih.gov/datasets/) CLI.
 
 ```{note}
 `get-databases` requires the `datasets` binary (`ncbi-datasets-cli`) on `PATH`.
@@ -41,10 +39,14 @@ Three consequences are worth stating explicitly:
   runtime. Conversely, a hit can only ever be reported for a lineage that is
   represented in the database: absence of an element is evidence of absence
   *from your reference set*, not from the genome.
-- **The taxonomy is yours too.** `Family`, `Genus`, `Species`, `Molecule_type`
-  and `Host` in the output tables are copied verbatim from `-mt`. EEfinder never
-  consults an external taxonomy, so the rank names, spellings and any
-  `Unclassified` entries in your results are the ones in your table.
+- **The taxonomy is yours too.** The `taxonomy` lineage, `molecule_type` and
+  `host` in the output tables come from the `Taxonomy`, `Molecule_type` and
+  `Host` columns of `-mt`. EEfinder never consults an external taxonomy: an
+  element reported from a single reference carries that reference's lineage
+  verbatim, and one merged from several carries their lowest common ancestor
+  (see [the lineage of a merged element](output.md#the-lineage-of-a-merged-element)).
+  The rank names, spellings and any `Unk` ranks in your results are therefore
+  the ones in your table (see [the `Taxonomy` column](#taxonomy-column)).
 
 The `-bt` bait set defines the opposite side of the comparison: it is the
 background that candidate elements must *fail* to match better than they match
@@ -59,7 +61,7 @@ positives: a putative EE that matches a host gene with a higher bitscore than it
 matches the viral/bacterial reference is removed (see
 [Running the pipeline](screening.md)).
 
-Use the RefSeq proteins of the host species, or of the closest available
+Use the NCBI proteins of the host species, or of the closest available
 relative. No metadata table is needed for this input — only the FASTA.
 `test_files/filter_subset.fa` shows the expected shape (RefSeq *Aedes
 albopictus* proteins used against an *Aedes aegypti* genome).
@@ -68,7 +70,7 @@ albopictus* proteins used against an *Aedes aegypti* genome).
 
 ```bash
 # Viral protein database + metadata (the -db / -mt inputs)
-eefinder get-databases virus -tx Flaviviridae -od db/ -pr virus
+eefinder get-databases virus -od db/ -pr virus
 
 # Bacterial protein database + metadata
 eefinder get-databases bacteria -tx 2 -od db/ -pr bacteria
@@ -109,10 +111,8 @@ default). `--standardize-proteins` exists only on `virus` and `bacteria`, since
 ## Excluding a virus from the download
 
 SARS-CoV-2 is **9,210,670 of the 15,027,633 viral records in GenBank — 61%** of
-everything under taxon `10239`, and 99.2% of *Coronaviridae*. A
-`get-databases virus --all-sequences` run therefore spends most of its
-bandwidth, disk and clustering time on one virus that is of no interest to an
-endogenous-element search.
+everything under taxon `10239`, and 99.2% of *Coronaviridae* (numbers from October 11th,
+2026).
 
 `--exclude-taxon` leaves it out. It is **not** a post-download filter: the
 branch is never requested from NCBI, so nothing about it is transferred.
@@ -166,7 +166,7 @@ resolved anyway.
 
 ## Progress and interrupted downloads
 
-A whole-RefSeq download takes a long time, so `get-databases` reports what it
+A whole NCBI download takes a long time, so `get-databases` reports what it
 is doing. The `datasets` CLI draws its own transfer progress
 (`Downloading: virus.zip  65.5kB 125kB/s`, then `Validating package files`) and
 EEfinder passes it straight through instead of swallowing it; the steps EEfinder
@@ -205,40 +205,6 @@ eefinder get-databases virus -od db/ --split-level genus
 eefinder get-databases virus -od db/ --split-level none
 ```
 
-Measured on the current taxonomy: all viruses is **427 families**, or 4,198
-genera; all bacteria is **1,136 families**. A taxon that is already at the split
-rank — `-tx Flaviviridae` with `--split-level family` — is downloaded in one
-request, so narrowing the taxon costs nothing.
-
-```{important}
-**Records with no taxon at that rank are not downloaded.** 45% of viral species
-have no family, and they account for 14% of the assemblies (38,723) — almost all
-of them `uncultured virus`, `Bacteriophage sp.` and similar. They are skipped on
-purpose: with no family there is no `Family`/`Genus` to assign and no
-`Molecule_type` to look up, so the elements they would produce carry no
-taxonomy. Every skipped subtree is listed in `{prefix}.log` under
-`skipped_taxa`, with its assembly count and the reason.
-```
-
-```json
-"skipped_taxa": [
-    {
-        "tax_id": 3367772,
-        "name": "unclassified Elliovirales",
-        "rank": "",
-        "assemblies": 12,
-        "reason": "no family in its lineage"
-    }
-]
-```
-
-A taxon NCBI holds no records for is not requested either: 47 of the 427 viral
-families are recognised by the ICTV but have nothing deposited, so asking for
-them costs a round trip and yields a package with no `protein.faa`. They are
-listed with `"reason": "no records in NCBI"`, which is why a whole-virus build
-reports **380 packages merged, not 427**. The run also says how many packages
-held no proteins, so the difference is never silent.
-
 By default only existent taxa (family or genus) are reported. `--include-unranked`
 downloads them as well: their full lineage still tells them apart, so including
 them does not cluster unclassified viruses together.
@@ -249,13 +215,6 @@ eefinder get-databases virus -od db/ --include-unranked
 
 `--split-level` composes with `--exclude-taxon`: the split is planned first, and
 an excluded branch is pruned out of whichever split taxon contains it.
-
-```{note}
-With hundreds of requests, one failing after every attempt no longer costs the
-run: it is skipped, recorded in `{prefix}.log` under `failed_taxa`, and a
-warning at the end says how many packages are missing and that the database is
-incomplete. A run only fails outright if *every* request failed.
-```
 
 ### Retries and stalled transfers
 
@@ -288,13 +247,13 @@ Failed to download databases: datasets download failed after 1 attempt(s)
 (exit 1): Error: The taxonomy name 'NotARealTaxon' is not a recognized virus taxon.
 ```
 
-## What a run leaves behind
+## Outputs
 
 ```
 db/
 ├── virus.fa              the protein database (screening -db)
 ├── virus.csv             its metadata (screening -mt)
-├── virus.tracking.tsv    the fate of every downloaded accession
+├── virus.tracking.tsv    the treatment of every downloaded accession
 ├── virus.clstr           the cd-hit clusters: members and representatives
 └── virus.log             the JSON run summary
 ```
@@ -331,16 +290,21 @@ step reporting it is still accounted for. It does happen — `cd-hit` silently
 discards sequences of up to 10 residues.
 
 ```
-Accession               Species           Protein_downloaded            Status   Reason                 Organism_release_date  Cluster
-NP_047212.1:1-1433      Bunyamwera virus  M polyprotein                 kept                            1991-07-30             15
-YP_009117083.1:1-2239   Maprik virus      RNA-dependent RNA polymerase  removed  released_after_cutoff  2015-01-31
-YP_009177301.1:1-210    Suffolk virus     hypothetical protein          removed  uninformative_product  2015-11-03
-YP_009177412.1:1-980    Chuvi virus       glycoprotein                  removed  identical_duplicate    2016-02-11             41
+Accession              Species                   Protein_downloaded              Protein_final  Name_changed  Status   Reason                 Organism_release_date  Cluster  Cluster_representative
+AAA17535.1:1-535       Soybean dwarf virus       RNA-dependent RNA polymerase    RdRp           yes           kept                            1990-02-10             2148     AAA17535.1:1-535
+AAA02620.1:1-167       Human betaherpesvirus 6A  glycoprotein                    Glycoprotein   yes           kept                            1991-03-15             80639    AAA02620.1:1-167
+NP_047212.1:1-1433     Bunyamwera virus          M polyprotein                   M polyprotein  no            kept                            1991-07-30             15       NP_047212.1:1-1433
+YP_009117083.1:1-2239  Maprik virus              RNA-dependent RNA polymerase                                 removed  released_after_cutoff  2015-01-31             3012     YP_009117083.1:1-2239
+YP_009177301.1:1-210   Suffolk virus             hypothetical protein                                         removed  uninformative_product  2015-11-03             41       YP_009177301.1:1-210
+AAA02569.1:1-109       Human coronavirus OC43    12.9 kDa nonstructural protein                               removed  identical_duplicate    1993-03-03             56645    XXN76581.1:1-109
 ```
+
+`Protein_final` and `Name_changed` are filled only for sequences that reach the
+metadata table; a sequence removed before that step leaves them empty.
 
 ## Reproducible builds (`--released-before`)
 
-RefSeq grows continuously, so "the viral database" means nothing without a date.
+NCBI databases grows continuously, so "the viral database" means nothing without a date.
 `--released-before YYYY-MM-DD` restricts a build to data released on or before
 that day, and the date is recorded in `{prefix}.log`, so a database can be
 rebuilt as it stood then:
@@ -439,20 +403,43 @@ The names must be spelled exactly as above — `Molecule_type`, not
 cannot be, which is why it is an error rather than a warning.
 ```
 
+```{note}
+To build a database by hand instead of with `get-databases`, any protein FASTA
+works, as long as every accession in it has a row in a CSV with the five
+columns above (`Accession,Taxonomy,Molecule_type,Protein,Host`).
+```
+
 ## How the metadata CSV is built
 
-The CSV consumed by `screening -mt` has the columns
-`Accession,Species,Genus,Family,Molecule_type,Protein,Host`. `get-databases`
-rebuilds it from the downloaded `protein.faa` headers joined with the datasets
-`data_report.jsonl` taxonomy:
+`get-databases` writes the five columns described [above](#the-metadata-csv-format)
+by joining the downloaded `protein.faa` headers with the datasets
+`data_report.jsonl`, matched on the organism name:
 
-- `Accession`, `Protein`, `Species` — from the protein FASTA headers.
-- `Genus`, `Family` — inferred from the NCBI taxonomy lineage by ICTV name
-  suffix (`-viridae` / single-word `-virus`).
-- `Host` — from the datasets taxonomy report.
-- `Molecule_type` — looked up by family from a bundled
+- `Accession`, `Protein` — from the protein FASTA header (`Protein` after
+  [`--standardize-proteins`](#standardize-proteins)).
+- `Taxonomy` — the report gives each organism's lineage as a list of tax ids
+  **without ranks**, so EEfinder collects every tax id that appears in any
+  lineage and resolves their ranks with `datasets summary taxonomy` (once per
+  tax id, in batches, rather than once per organism).
+  Each lineage is then written as the eight-rank string, `Unk` wherever NCBI
+  has no taxon at that rank. `s__` is the organism name as NCBI delivered it,
+  which can sit below species rank (a strain or isolate).
+- `Host` — the host organism of the organism's first genome record in the
+  report.
+- `Molecule_type` — looked up by the `f__` rank in a bundled
   [ICTV genome-composition table](https://ictv.global/report/information/virus-properties)
-  (`eefinder/data/`), since the datasets report does not carry it.
+  (`eefinder/data/ictv_genome_composition.tsv`), since the report does not
+  carry it. A family missing from the table, an `Unk` family and every
+  bacterial family leave it empty.
+
+Two fallbacks keep a build from failing on incomplete taxonomy:
+
+- If the rank lookup fails, a warning is logged and ranks are inferred from
+  ICTV name suffixes instead (`-viridae` for the family, a single-word
+  `-virus` for the genus). Only `f__`, `g__` and `s__` are filled; every other
+  rank is `Unk`.
+- A protein whose organism has no entry in the report gets a lineage with only
+  `s__` filled, and an empty `Host`.
 
 ## Deduplication (`--cluster`)
 
@@ -532,91 +519,8 @@ timing, and a **`sequence_counts`** block reporting how many sequences were:
 
 ## Indexing
 
-Whichever route you took, the databases must be indexed once for the search
-engine you intend to use. `screening` builds the BLAST (`makeblastdb`) or
-DIAMOND (`diamond makedb`) index of `-db` and `-bt` automatically when it is
-missing; pass `-id`/`--index_databases` to rebuild it (e.g. after replacing a
-FASTA in place).
-
-## Appendix: building the databases by hand
-
-`get-databases` is the recommended, reproducible path, but both files can still
-be assembled manually — and this is what `get-databases` automates.
-
-### Viral database and metadata
-
-Both files come from the same [NCBI Virus](https://www.ncbi.nlm.nih.gov/labs/virus/vssi/#/)
-page, downloaded twice: once as FASTA (the database) and once as CSV (the
-metadata).
-
-#### Protein database (`-db`)
-
-Scroll down and select **RefSeq protein**:
-
-![NCBI Virus RefSeq protein](_static/images/db_refseq.png)
-
-Click the **Download** button:
-
-![Download button](_static/images/db_download_button.png)
-
-Select **Protein** as the sequence type:
-
-![Select protein](_static/images/db_select_protein.png)
-
-Select **Download all records**:
-
-![Download all records](_static/images/db_download_all.png)
-
-Keep the **default** FASTA definition line:
-
-![Default FASTA definition line](_static/images/db_fasta_line.png)
-
-#### Protein table (`-mt`)
-
-Staying on the same RefSeq page, click **Download** again and this time choose
-**CSV format**:
-
-![Select CSV](_static/images/table_csv.png)
-
-Select **Download all records**:
-
-![Download all records](_static/images/table_download_all.png)
-
-Then select exactly the columns EEfinder expects — **Accession** (*with
-version*), **Species**, **Genus**, **Family**, **Molecule type**, **Protein**
-and **Host** — and nothing else:
-
-![Column selection](_static/images/table_template.png)
-
-### Bacterial database and metadata
-
-Assemble the protein FASTA yourself from the NCBI protein database, then build
-the matching metadata table with the accessory script
-[`accessory_scripts/bac_retriever.py`](https://github.com/WallauBioinfo/EEfinder/blob/master/accessory_scripts/bac_retriever.py):
-
-```bash
-python accessory_scripts/bac_retriever.py \
-  -in <fasta_with_bacterial_proteins> \
-  -em <your_ncbi_email> \
-  -key <your_ncbi_api_key>
-```
-
-The script reads the accession IDs from the FASTA headers and queries Entrez for
-the metadata, writing a table with the same seven-column structure as the viral
-example.
-
-```{important}
-The bacterial protein FASTA **must** come from an NCBI protein database, and its
-headers **must** start with the NCBI protein accession — that is how the script
-finds the records.
-```
-
-#### Email and API key
-
-Entrez requires an email address, and an API key raises the request rate limit.
-Register at NCBI, then open **Account Settings** and find **API Key Management**:
-
-![NCBI API key management](_static/images/ncbi_apikey.png)
-
-The manual host-protein selection described in the
-[wiki](https://github.com/WallauBioinfo/EEfinder/wiki) remains valid as well.
+The databases must be indexed once for the search engine you intend to use.
+`screening` builds the BLAST (`makeblastdb`) or DIAMOND (`diamond makedb`)
+index of `-db` and `-bt` automatically when it is missing; pass
+`-id`/`--index_databases` to rebuild it (e.g. after replacing a FASTA in
+place).

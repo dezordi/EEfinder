@@ -723,11 +723,16 @@ def cluster_identical_proteins(
     return before - after
 
 
-def seed_tracking(extract_dir: str, tracking: "dict[str, dict]") -> int:
+def seed_tracking(
+    extract_dir: str,
+    tracking: "dict[str, dict]",
+    release_dates: "dict[str, str] | None" = None,
+) -> int:
     """Record every downloaded accession, before anything is dropped.
 
     Clustering removes duplicates before the packages are merged, so rows
-    created at merge time would miss them.
+    created at merge time would miss them -- and so would their release date,
+    which is why it is recorded here too.
 
     Returns
     -------
@@ -749,7 +754,9 @@ def seed_tracking(extract_dir: str, tracking: "dict[str, dict]") -> int:
                             "Name_changed": "",
                             "Status": STATUS_KEPT,
                             "Reason": "",
-                            "Organism_release_date": "",
+                            "Organism_release_date": (release_dates or {}).get(
+                                header.organism, ""
+                            ),
                             "Cluster": "",
                             "Cluster_representative": "",
                         },
@@ -1116,7 +1123,7 @@ class GetDatabases:
                     "could not be applied."
                 )
         if tracking is not None:
-            seed_tracking(extract_dir, tracking)
+            seed_tracking(extract_dir, tracking, release_dates)
             logger.debug(f"Tracking seeded with {len(tracking)} accession(s)")
 
         clustered_identical = 0

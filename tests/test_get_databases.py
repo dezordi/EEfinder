@@ -20,6 +20,7 @@ from eefinder.get_databases import (
     build_metadata_frame,
     cluster_identical_proteins,
     concat_protein_faas,
+    seed_tracking,
     count_fasta_records,
     filter_fasta_by_ids,
     find_data_report,
@@ -1097,6 +1098,22 @@ class TestReleaseDateCutoff:
         assert tracking["PROT_NEW"]["Organism_release_date"] == "2024-01-15"
         assert tracking["PROT_OLD"]["Status"] == "kept"
         assert tracking["PROT_OLD"]["Organism_release_date"] == "2002-08-13"
+
+    def test_a_duplicate_dropped_before_merging_keeps_its_release_date(self, tmp_path):
+        """Clustering removes duplicates before the merge ever sees them."""
+        data = tmp_path / "ncbi_dataset" / "data"
+        data.mkdir(parents=True)
+        (data / "protein.faa").write_text(
+            ">PROT_DUP glycoprotein [organism=La Crosse virus]\nMKALL\n"
+        )
+        tracking = {}
+        seed_tracking(
+            str(tmp_path), tracking, parse_release_dates(self._report(tmp_path))
+        )
+        (data / "protein.faa").write_text("")  # as if cd-hit had dropped it
+        concat_protein_faas(str(tmp_path), str(tmp_path / "out.faa"), tracking=tracking)
+
+        assert tracking["PROT_DUP"]["Organism_release_date"] == "2002-08-13"
 
     def test_the_date_column_follows_the_reason(self, tmp_path):
         assert TRACKING_COLUMNS.index("Organism_release_date") == (
