@@ -255,3 +255,34 @@ def test_filter_overlap_keep_strategy_is_a_no_op(tmp_path):
     kept = pd.read_csv(tax, sep="\t")
     assert list(kept["element_id"]) == ["ctg1:100-200", "ctg1:150-400"]
     assert (tmp_path / "removed.tax").exists()
+
+
+def test_postprocess_resolves_overlaps_without_touching_its_inputs(tmp_path):
+    from eefinder.stages import PostProcessing
+
+    tax = tmp_path / "elements.tax.tsv"
+    fasta = tmp_path / "elements.fa"
+    _write_tax(
+        tax,
+        [
+            _row("ctg1:100-200", "FamA", "overlaped", "ctg1:150-400"),
+            _row("ctg1:150-400", "FamB", "overlaped", "ctg1:100-200"),
+        ],
+    )
+    _write_fasta(fasta, ["ctg1:100-200", "ctg1:150-400"])
+    before = (tax.read_text(), fasta.read_text())
+
+    result = PostProcessing(
+        ee_elements=str(fasta),
+        ee_elements_tax=str(tax),
+        outdir=str(tmp_path / "out"),
+        prefix="PFX",
+        overlap="targets",
+        target_families=["FamA"],
+    ).run()
+
+    assert (tax.read_text(), fasta.read_text()) == before
+    resolved = pd.read_csv(result.ee_elements_resolved_tax, sep="\t")
+    assert list(resolved["element_id"]) == ["ctg1:100-200"]
+    with open(result.ee_elements_resolved) as handle:
+        assert ">PFX/ctg1:150-400" not in handle.read()

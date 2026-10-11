@@ -113,6 +113,16 @@ class ScreeningPaths:
         return self._p("elements.tax.tsv")
 
     @property
+    def ee_elements_resolved(self) -> str:
+        """Return the elements left after overlap resolution."""
+        return self._p("elements.resolved.fa")
+
+    @property
+    def ee_elements_resolved_tax(self) -> str:
+        """Return the taxonomy table of :attr:`ee_elements_resolved`."""
+        return self._p("elements.resolved.tax.tsv")
+
+    @property
     def ee_elements_cleaned(self) -> str:
         """Return the elements surviving the soft-mask filter."""
         return self._p("elements.cleaned.fa")
@@ -217,6 +227,8 @@ class ScreeningPaths:
             self.merge_bed,
             self.merge_bed_merged,
             self.merge_elements_bed,
+            self.ee_elements,
+            self.ee_elements_tax,
             self.flanks_bed,
             self.flanks_slop_bed,
         ]

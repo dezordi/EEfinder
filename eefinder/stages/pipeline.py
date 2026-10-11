@@ -235,7 +235,7 @@ class ScreeningPipeline(Stage):
         logger.info("Extracting flanking regions")
         flanked = record(
             FlanksExtraction(
-                ee_elements=merged.ee_elements,
+                ee_elements=processed.ee_elements_resolved,
                 genome=cleaned.cleaned_genome,
                 outdir=self.outdir,
                 prefix=self.prefix,
@@ -244,7 +244,7 @@ class ScreeningPipeline(Stage):
         )
 
         logger.info("Organizing final outputs")
-        self._publish(merged, processed, flanked)
+        self._publish(processed, flanked)
         self._archive()
 
         outputs = ScreeningPipelineOutputs(
@@ -264,12 +264,12 @@ class ScreeningPipeline(Stage):
         )
         return outputs, "Ran every screening stage and published the outputs."
 
-    def _publish(self, merged, processed, flanked) -> None:
+    def _publish(self, processed, flanked) -> None:
         """Rename the stage outputs to their published ``PREFIX.EEs.*`` names."""
         paths = self.paths
         renames = [
-            (merged.ee_elements, paths.final_fasta),
-            (merged.ee_elements_tax, paths.final_tax),
+            (processed.ee_elements_resolved, paths.final_fasta),
+            (processed.ee_elements_resolved_tax, paths.final_tax),
             (processed.ee_elements_gff3, paths.final_gff3),
             (flanked.flanks, paths.final_flanks),
         ]

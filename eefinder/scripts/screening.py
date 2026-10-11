@@ -616,7 +616,8 @@ def postprocess_cmd(
 @screening.command(name="flanks")
 @click.option(
     "--ee-elements",
-    help="Merged elements. default = <outdir>/<prefix>.elements.fa",
+    help="Overlap-resolved elements from the 'postprocess' stage. "
+    "default = <outdir>/<prefix>.elements.resolved.fa",
     default=None,
 )
 @click.option(
@@ -644,7 +645,7 @@ def flanks_cmd(
     paths = ScreeningPaths(outdir=outdir, prefix=prefix)
     _run_stage(
         FlanksExtraction(
-            ee_elements=ee_elements or paths.ee_elements,
+            ee_elements=ee_elements or paths.ee_elements_resolved,
             genome=genome or paths.cleaned_genome,
             outdir=outdir,
             prefix=prefix,

@@ -154,6 +154,8 @@ outdir/
     ├── PREFIX.merge.annotated.bed
     ├── PREFIX.merge.merged.bed
     ├── PREFIX.merge.elements.bed
+    ├── PREFIX.elements.fa                # merged elements, before overlap resolution
+    ├── PREFIX.elements.tax.tsv
     ├── PREFIX.flanks.bed
     └── PREFIX.flanks.slop.bed
 ```

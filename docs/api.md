@@ -89,7 +89,7 @@ merged = MergeFragmentedElements(
 | `PutativeElementsFilter` | `filter` | `candidates`, `ee_hits_filtered`, `hostgenesbaits` | `host_hits`, `host_hits_filtered`, `ee_hits_validated` |
 | `TaxonomyAssignment` | `taxonomy` | `ee_hits_validated`, `dbmetadata` | `taxonomy_signature` |
 | `MergeFragmentedElements` | `merge` | `taxonomy_signature`, `genome`, `limit`, `merge_level` | `merge_bed`, `merge_bed_merged`, `merge_elements_bed`, `ee_elements`, `ee_elements_tax` |
-| `PostProcessing` | `postprocess` | `ee_elements`, `ee_elements_tax`, `clean_masked`, `mask_per`, `overlap`, `analysis` | `ee_elements_gff3`, `ee_elements_cleaned*`, `removed_*` |
+| `PostProcessing` | `postprocess` | `ee_elements`, `ee_elements_tax`, `clean_masked`, `mask_per`, `overlap`, `analysis` | `ee_elements_resolved`, `ee_elements_resolved_tax`, `ee_elements_gff3`, `ee_elements_cleaned*`, `removed_*` |
 | `FlanksExtraction` | `flanks` | `ee_elements`, `genome`, `flank` | `genome_lengths`, `flanks_bed`, `flanks_slop_bed`, `flanks` |
 | `ScreeningPipeline` | `all` | all of the above | `final_fasta`, `final_tax`, `final_gff3`, `final_flanks`, `step_infos` |
 

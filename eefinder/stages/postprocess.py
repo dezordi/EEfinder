@@ -6,6 +6,7 @@ table, so they share one stage.
 
 from __future__ import annotations
 import os
+import shutil
 from dataclasses import dataclass
 from typing import Optional, Sequence
 from eefinder.clean_data import MaskClean
@@ -24,8 +25,13 @@ class PostProcessingOutputs(StageOutputs):
 
     Attributes
     ----------
+    ee_elements_resolved : str
+        The elements left after overlap resolution -- a copy of the input
+        under ``--overlap keep``. Published as ``PREFIX.EEs.fa``.
+    ee_elements_resolved_tax : str
+        Their taxonomy table -- published as ``PREFIX.EEs.tax.tsv``.
     ee_elements_gff3 : str
-        GFF3 annotation of the elements.
+        GFF3 annotation of the resolved elements.
     ee_elements_cleaned : str or None
         Mask-cleaned element sequences, when ``--clean_masked`` was given.
     ee_elements_cleaned_tax : str or None
@@ -36,6 +42,8 @@ class PostProcessingOutputs(StageOutputs):
         Elements dropped by overlap resolution, preserved for inspection.
     """
 
+    ee_elements_resolved: str
+    ee_elements_resolved_tax: str
     ee_elements_gff3: str
     ee_elements_cleaned: Optional[str] = None
     ee_elements_cleaned_tax: Optional[str] = None
@@ -88,6 +96,8 @@ class PostProcessing(Stage):
     stage_id = "07"
 
     models = {
+        "ee_elements_resolved": ELEMENT_FASTA,
+        "ee_elements_resolved_tax": ELEMENT_TABLE,
         "ee_elements_cleaned": ELEMENT_FASTA,
         "ee_elements_cleaned_tax": ELEMENT_TABLE,
     }
@@ -135,6 +145,13 @@ class PostProcessing(Stage):
                 f"EEs with {self.mask_per} percent of lower-case letters are removed"
             )
 
+        # Overlap resolution rewrites its files in place, so it works on copies:
+        # the inputs may belong to another run (e.g. a symlinked Nextflow input).
+        resolved = paths.ee_elements_resolved
+        resolved_tax = paths.ee_elements_resolved_tax
+        shutil.copyfile(self.ee_elements, resolved)
+        shutil.copyfile(self.ee_elements_tax, resolved_tax)
+
         removed_fasta = removed_tax = None
         if self.overlap != "keep":
             logger.info(f"Filtering overlaping elements ({self.overlap})")
@@ -148,8 +165,8 @@ class PostProcessing(Stage):
                 f"removed elements -> {paths.removed_dir}"
             )
             FilterOverlap(
-                self.ee_elements,
-                self.ee_elements_tax,
+                resolved,
+                resolved_tax,
                 self.overlap,
                 self.target_families,
                 removed_fasta,
@@ -174,7 +191,7 @@ class PostProcessing(Stage):
         logger.info("Generating GFF3 annotation")
         logger.debug(f"WriteGFF3 (analysis={self.analysis}) for prefix {self.prefix!r}")
         WriteGFF3(
-            self.ee_elements_tax,
+            resolved_tax,
             paths.ee_elements_gff3,
             prefix=self.prefix,
             analysis=self.analysis,
@@ -191,6 +208,8 @@ class PostProcessing(Stage):
 
         outputs = PostProcessingOutputs(
             step_info=None,
+            ee_elements_resolved=resolved,
+            ee_elements_resolved_tax=resolved_tax,
             ee_elements_gff3=paths.ee_elements_gff3,
             ee_elements_cleaned=cleaned,
             ee_elements_cleaned_tax=cleaned_tax,

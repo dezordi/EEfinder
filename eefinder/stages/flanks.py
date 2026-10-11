@@ -38,7 +38,9 @@ class FlanksExtraction(Stage):
     Parameters
     ----------
     ee_elements : str
-        Merged element sequences, whose headers carry the coordinates.
+        Overlap-resolved elements from
+        :class:`~eefinder.stages.postprocess.PostProcessing`, whose headers carry
+        the coordinates.
     genome : str
         Cleaned genome the flanks are cut from.
     outdir, prefix : str
@@ -49,7 +51,7 @@ class FlanksExtraction(Stage):
     Example
     -------
     >>> result = FlanksExtraction(                       # doctest: +SKIP
-    ...     ee_elements="out/run.elements.fa",
+    ...     ee_elements="out/run.elements.resolved.fa",
     ...     genome="out/run.cleaned_genome.fa",
     ...     outdir="out",
     ...     prefix="run",
