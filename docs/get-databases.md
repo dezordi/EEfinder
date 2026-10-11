@@ -533,10 +533,10 @@ timing, and a **`sequence_counts`** block reporting how many sequences were:
 ## Indexing
 
 Whichever route you took, the databases must be indexed once for the search
-engine you intend to use. Pass `-id`/`--index_databases` on the first run against
-a given pair of databases and EEfinder will build the BLAST (`makeblastdb`) or
-DIAMOND (`diamond makedb`) index for both `-db` and `-bt`. Later runs against the
-same files can omit the flag.
+engine you intend to use. `screening` builds the BLAST (`makeblastdb`) or
+DIAMOND (`diamond makedb`) index of `-db` and `-bt` automatically when it is
+missing; pass `-id`/`--index_databases` to rebuild it (e.g. after replacing a
+FASTA in place).
 
 ## Appendix: building the databases by hand
 

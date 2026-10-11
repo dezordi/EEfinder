@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import pandas as pd
 from eefinder.log import logger
-from eefinder.make_database import MakeDB
+from eefinder.make_database import MakeDB, has_index
 from eefinder.stages.base import Stage, StageOutputs
 from eefinder.utils import check_metadata_file
 
@@ -119,7 +119,8 @@ class PrepareInputs(Stage):
 
     Checks the ``-mt`` header, that ``-db`` and ``-bt`` are usable protein
     FASTAs, and that the database and its metadata describe the same protein
-    set; then builds the BLAST or DIAMOND index for both FASTAs when asked.
+    set; then builds the BLAST or DIAMOND index of each FASTA that lacks one
+    (or of both, when asked).
 
     Parameters
     ----------
@@ -136,7 +137,7 @@ class PrepareInputs(Stage):
     threads : int
         Threads for the index build.
     index_databases : bool
-        Build the indexes. When ``False`` only the checks run.
+        Rebuild both indexes. When ``False`` only a missing index is built.
 
     Example
     -------
@@ -183,21 +184,26 @@ class PrepareInputs(Stage):
         _check_protein_fasta(self.hostgenesbaits, "-bt host-gene baits")
         check_database_pairing(self.database, self.dbmetadata)
 
-        if self.index_databases:
+        to_index = [
+            fasta
+            for fasta in (self.database, self.hostgenesbaits)
+            if self.index_databases or not has_index(self.mode, fasta)
+        ]
+        if to_index:
             logger.info("Indexing databases")
-            logger.debug(f"MakeDB ({self.mode}) protein DB: {self.database}")
-            MakeDB(self.mode, self.database, "prot", self.threads)
-            logger.debug(f"MakeDB ({self.mode}) baits DB: {self.hostgenesbaits}")
-            MakeDB(self.mode, self.hostgenesbaits, "prot", self.threads)
+            for fasta in to_index:
+                logger.debug(f"MakeDB ({self.mode}): {fasta}")
+                MakeDB(self.mode, fasta, "prot", self.threads)
             message = (
                 f"Validated {self.dbmetadata}, {self.database} and "
-                f"{self.hostgenesbaits}; built the {self.mode} indexes."
+                f"{self.hostgenesbaits}; built the {self.mode} index for "
+                f"{', '.join(to_index)}."
             )
         else:
-            logger.warning("index_databases step will not be performed")
+            logger.info(f"Reusing the existing {self.mode} indexes")
             message = (
                 f"Validated {self.dbmetadata}, {self.database} and "
-                f"{self.hostgenesbaits}; indexing skipped."
+                f"{self.hostgenesbaits}; existing indexes reused."
             )
 
         outputs = PrepareInputsOutputs(
@@ -205,6 +211,6 @@ class PrepareInputs(Stage):
             database=self.database,
             dbmetadata=self.dbmetadata,
             hostgenesbaits=self.hostgenesbaits,
-            indexed=self.index_databases,
+            indexed=bool(to_index),
         )
         return outputs, message

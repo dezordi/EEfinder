@@ -35,8 +35,8 @@ eefinder screening \
 
 - `-ln 1000` lowers the minimum contig length (the example contig is shorter than
   the 10000 nt default, which would otherwise filter it out).
-- `-id` builds the BLAST/DIAMOND indexes for the databases (needed on the first
-  run against a given database).
+- `-id` rebuilds the BLAST/DIAMOND indexes for the databases. A missing index is
+  built automatically, so the flag is only needed to refresh a stale one.
 - `-p 2` uses two threads.
 - `-lm 100` merges same-taxon elements within 100 nt.
 
@@ -160,7 +160,7 @@ The full benchmark is reported in section 3.2 (*Benchmark of alignment tools*) o
 | `-ln/--length` | `10000` | Minimum contig length for the search. |
 | `-rj/--range_junction` | `100` | Range for junction of redundant hits — see [Custom arguments](custom-arguments.md). |
 | `-p/--threads` | `1` | Threads for multi-threaded steps. |
-| `-id/--index_databases` | off | Build the BLAST/DIAMOND indexes for the databases. |
+| `-id/--index_databases` | off | Rebuild the BLAST/DIAMOND indexes (a missing index is always built). |
 
 ### Element assembly
 

@@ -278,7 +278,7 @@ def screening():
 @click.option(
     "-id",
     "--index_databases",
-    help="Index databases?",
+    help="Rebuild the database indexes (a missing index is always built).",
     is_flag=True,
 )
 @_common_options
@@ -715,7 +715,7 @@ def _check_overlap_options(overlap, target_families, non_target_families):
 @click.option(
     "-id",
     "--index_databases",
-    help="Index databases?",
+    help="Rebuild the database indexes (a missing index is always built).",
     is_flag=True,
 )
 @_common_options

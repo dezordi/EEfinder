@@ -1,6 +1,7 @@
 """Build BLAST or DIAMOND protein databases from a FASTA file."""
 
 from __future__ import annotations
+import os
 import shlex
 import subprocess
 from Bio.Blast.Applications import NcbimakeblastdbCommandline
@@ -12,6 +13,16 @@ def makeblastdb(data: str, db_type: str) -> None:
     """Create an NCBI BLAST database from ``data`` (``nucl`` or ``prot``)."""
     clinedb = NcbimakeblastdbCommandline(dbtype=db_type, input_file=data)
     clinedb()
+
+
+def has_index(mode: str, data: str) -> bool:
+    """Whether the ``mode`` search index for ``data`` already exists.
+
+    BLAST writes ``.pin`` (or a ``.pal`` alias for multi-volume databases);
+    DIAMOND writes ``.dmnd``.
+    """
+    suffixes = (".pin", ".pal") if mode in BLAST_MODES else (".dmnd",)
+    return any(os.path.exists(data + suffix) for suffix in suffixes)
 
 
 def makediamonddb(data: str, threads: int) -> None:

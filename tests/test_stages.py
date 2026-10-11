@@ -156,11 +156,11 @@ def test_data_cleaning_reports_a_missing_genome(tmp_path):
         stage.run()
 
 
-def test_prepare_inputs_validates_without_indexing(
-    tmp_path, fasta_factory, taxonomy_csv
-):
+def test_prepare_inputs_reuses_existing_indexes(tmp_path, fasta_factory, taxonomy_csv):
     database = fasta_factory("db.fa", {"PROT_A": "MKV"})
     baits = fasta_factory("baits.fa", {"HOST_1": "MKV"})
+    (tmp_path / "db.fa.pin").touch()
+    (tmp_path / "baits.fa.pal").touch()
 
     result = PrepareInputs(
         database=str(database),
