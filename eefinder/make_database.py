@@ -38,6 +38,7 @@ def makediamonddb(data: str, threads: int) -> None:
         shlex.split(clinedb),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        check=True,
     )
 
 

@@ -13,7 +13,8 @@ produced by `all`.
 |------|----------|
 | `PREFIX.EEs.fa` | Endogenous element nucleotide sequences. |
 | `PREFIX.EEs.tax.tsv` | Endogenous element taxonomy table (one row per element). |
-| `PREFIX.EEs.gff3` | Endogenous element annotation in GFF3 format. |
+| `PREFIX.EEs.gff3` | Endogenous element annotation in GFF3 format, with each element's CDSs. |
+| `PREFIX.EEs.faa` | The proteins of those CDSs, one per CDS. |
 | `PREFIX.EEs.flanks.fa` | Endogenous elements plus flanking regions (`--flank` nt each side). |
 | `eefinder.log` | JSON run summary (see below). |
 
@@ -86,20 +87,61 @@ spec, custom tags lower-case:
 | `Name` | the `s__` rank of `taxonomy` |
 | `realm`, `kingdom`, `phylum`, `class`, `order`, `family`, `genus`, `species` | one attribute per rank of `taxonomy`; ranks the element does not reach are omitted |
 | `molecule_type` | `molecule_type` |
-| `product` | `protein_products` |
-| `protein_ids` | `protein_ids`, re-separated with `,` (see below) |
-| `host` | `host` |
 | `overlap_status` | `tag` (`overlaped` / `unique`) |
 
 The ranks are written as separate attributes rather than as the single lineage
-string the TSV carries, so a genome browser can filter on one of them.
+string the TSV carries, so a genome browser can filter on one of them. The
+element's proteins are described by its `CDS` lines (below); its
+`protein_ids`, `protein_products` and `host` stay in `PREFIX.EEs.tax.tsv`.
 
 GFF3-reserved characters (`;`, `=`, `&`, `,`, tabs, newlines) are
-percent-encoded in attribute values. The `;` that separates the `protein_ids`
-entries in the TSV is one of them, so in the GFF3 those entries are joined with
-`,` instead — the separator the spec reserves for a multi-valued attribute. A
-comma occurring *inside* an entry is still escaped to `%2C`, so the two cannot
-be confused.
+percent-encoded in attribute values.
+
+### CDS features and proteins (`PREFIX.EEs.faa`)
+
+Each element is followed by its `CDS` features (`Parent` = the element's `ID`),
+one for each open reading frame (ORF) that contains a validated hit.
+
+To find the CDS for a hit:
+
+1. Translate the element in the hit's reading frame (standard genetic code) and
+   split it at stop codons.
+2. In each segment, the ORF runs from the first ATG to the stop codon.
+3. The CDS is the ORF that overlaps the hit's aligned region the most.
+
+Notes:
+
+- If hits on the same element overlap, only the longest is used (higher
+  bitscore wins a tie).
+- Hits that fall in the same ORF produce a single CDS, named after the longest
+  hit.
+- If no ORF in the hit's frame overlaps it, no CDS is created. Its protein is
+  still listed in the element's `protein_ids` column in the TSV.
+- CDS coordinates include the stop codon. If the frame is still open at the
+  edge of the element, the CDS ends there and is flagged `partial`.
+- CDSs in different frames may overlap.
+- Phase is always 0.
+
+#### CDS row atributes values
+
+| Column / attribute | Value |
+|--------------------|-------|
+| score | identity to the reference protein |
+| `ID` | `{element ID}.cds{n}`, numbered along the genome |
+| `Name` | the reference protein's name in the database metadata; when several CDSs of an element share it, numbered along the reference protein (`fragment 1` aligns nearest its N-terminus, whatever the strand): `polyprotein fragment 1`, `polyprotein fragment 2`, ... |
+| `hit` | the reference protein |
+| `ref_range` | the aligned range of the reference protein |
+| `aligned_range` | the genome range of the hit, inside the CDS or across it |
+| `evalue`, `bitscore` | of the hit |
+| `pseudo`, `stop_codons` | `true` and their count when the hit's aligned region has stop codons, i.e. the ORF covers only part of the homology |
+| `partial` | `true` when the ORF reaches the element's edge without a stop codon |
+
+`PREFIX.EEs.faa` holds the protein of every CDS (ATG to the residue before the
+stop codon), in the GFF3's order, headed with the CDS `ID`:
+
+```text
+>PREFIX/ctg:23094-24233.cds2 hit=YP_009350102.1 ref_range=1113-1299 pident=37.433 pseudo=false partial=false name=polyprotein fragment 2
+```
 
 ## The cleaned outputs (`--clean_masked`)
 
@@ -139,6 +181,7 @@ outdir/
 ├── PREFIX.EEs.fa
 ├── PREFIX.EEs.tax.tsv
 ├── PREFIX.EEs.gff3
+├── PREFIX.EEs.faa
 ├── PREFIX.EEs.flanks.fa
 └── tmp_files/
     ├── PREFIX.cleaned_genome.fa          # prefixed headers + length-filtered

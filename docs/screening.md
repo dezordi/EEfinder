@@ -2,7 +2,7 @@
 
 `screening` is the EE core logic itself. It takes a genome FASTA plus the protein
 database, its metadata CSV, and the host-gene baits, and produces the endogenous
-element sequences, taxonomy table, GFF3 annotation, and flanking regions.
+element sequences, taxonomy table, GFF3 annotation, element proteins, and flanking regions.
 
 (example-run)=
 ## Example run (with the bundled `test_files/`)
@@ -56,7 +56,7 @@ step, resumed, or split across jobs:
 | `filter` | Reverse search against the host baits, drop what matches them harder | the candidates, `-bt` | `*.host_hits*.tsv`, `*.ee_hits.validated.tsv` |
 | `taxonomy` | Join the surviving hits to the metadata | the validated hits, `-mt` | `*.taxonomy_signature.csv` |
 | `merge` | Merge same-taxon fragments, build the element table | the signature, the cleaned genome | `*.elements.fa`, `*.elements.tax.tsv` |
-| `postprocess` | Repeat filter, overlap resolution, GFF3 | the elements and their table | `*.elements.gff3`, `*.elements.cleaned.*` |
+| `postprocess` | Repeat filter, overlap resolution, GFF3 and proteins | the elements, their table and the taxonomy stage's hits | `*.elements.gff3`, `*.elements.faa`, `*.elements.cleaned.*` |
 | `flanks` | Extract the flanking regions | the elements, the cleaned genome | `*.flanks.fa` |
 | `all` | Every stage, then publish `PREFIX.EEs.*` | all of the above | the [documented outputs](output.md) |
 
@@ -181,8 +181,9 @@ The full benchmark is reported in section 3.2 (*Benchmark of alignment tools*) o
 
 ```{note}
 The default `blastx` mode is the tested, reliable path. The DIAMOND modes
-depend on the `diamond` build pinned in `env.yml` and can fail silently if that
-build misbehaves — verify it if a DIAMOND run produces no hits.
+depend on the `diamond` build pinned in `env.yml`. A DIAMOND failure (for
+example, killed for lack of memory) stops the run with the command and its exit
+status, but DIAMOND's own messages are discarded: rerun the command to see them.
 ```
 
 See [Outputs](output.md) for the files produced and

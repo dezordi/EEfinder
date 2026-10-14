@@ -137,7 +137,9 @@ refreshed files.
 
 ## Formatting
 
-Format the code (and check in CI) with black:
+Format the code (and check in CI) with black, pinned to 25.11.0 in the `dev`
+extra and `requirements-dev.txt` (the last release that runs on Python 3.9, so
+the EEfinder environment and CI format the same way):
 
 ```bash
 black eefinder tests      # apply

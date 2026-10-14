@@ -57,6 +57,7 @@ from eefinder.progress import (
     run_with_retries,
 )
 from eefinder.translation import cluster_proteins, parse_cdhit_clusters
+from eefinder.make_database import MakeDB
 from eefinder.lineage import format_lineage, lineage_from_nodes, rank_name
 from eefinder.taxon_exclusion import (
     batch_taxa,
@@ -988,6 +989,10 @@ class GetDatabases:
         the excluded subtrees (:func:`eefinder.taxon_exclusion.expand_taxon_excluding`),
         which is what keeps SARS-CoV-2 -- 61% of all viral records -- out of an
         ``--all-sequences`` viral build.
+    index_mode : str, optional
+        Search mode (``"blastx"`` or a DIAMOND sensitivity) whose index is built
+        beside the FASTA, the one ``screening prepare`` would otherwise build.
+        ``None`` (the default) builds none.
     """
 
     def __init__(
@@ -1009,6 +1014,7 @@ class GetDatabases:
         exclude_taxa: "tuple[str, ...]" = (),
         split_level: str = NO_SPLIT,
         include_unranked: bool = False,
+        index_mode: "str | None" = None,
     ) -> None:
         if dataset not in DATASET_CHOICES:
             raise ValueError(f"Unknown dataset type: {dataset!r}")
@@ -1031,6 +1037,7 @@ class GetDatabases:
             raise ValueError(f"Unknown split level: {split_level!r}")
         self.split_level = split_level
         self.include_unranked = include_unranked
+        self.index_mode = index_mode
         self.skipped_taxa: "list[dict]" = []
         self.failed_taxa: "list[dict]" = []
 
@@ -1260,6 +1267,19 @@ class GetDatabases:
             )
         )
 
+        if self.index_mode:
+            start = time.time()
+            logger.info(f"Building the {self.index_mode} index of {fasta_out}")
+            MakeDB(self.index_mode, fasta_out, "prot", self.threads)
+            steps.append(
+                StepInfo.from_times(
+                    "Index the database",
+                    start,
+                    time.time(),
+                    f"Built the {self.index_mode} index of {fasta_out}.",
+                )
+            )
+
         if not self.keep_download:
             start = time.time()
             removed = self._clean_download(zip_path, extract_dir)
@@ -1333,6 +1353,7 @@ class GetDatabases:
                 split_level=self.split_level,
                 include_unranked=self.include_unranked,
                 threads=self.threads,
+                index_mode=self.index_mode or "",
             ),
             sequence_counts=self.sequence_counts,
             start_time=start_time,

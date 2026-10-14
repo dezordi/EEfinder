@@ -27,5 +27,8 @@ jobs:
           # needed for the unit tests.
           pip install ".[dev]"
 
+      - name: Check formatting
+        run: black --check eefinder tests
+
       - name: Run unit tests
         run: pytest -m "not integration"

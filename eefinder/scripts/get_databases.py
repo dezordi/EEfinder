@@ -19,6 +19,17 @@ from eefinder.taxon_split import NO_SPLIT, SPLIT_LEVELS
 from eefinder.progress import DEFAULT_ATTEMPTS, DEFAULT_STALL_TIMEOUT
 from eefinder import __version__
 
+SEARCH_MODES = [
+    "blastx",
+    "fast",
+    "mid-sensitive",
+    "sensitive",
+    "more-sensitive",
+    "very-sensitive",
+    "ultra-sensitive",
+]
+INDEX_BINARIES = {"blastx": "makeblastdb"}  # every DIAMOND mode uses `diamond`
+
 
 def _common_download_options(func):
     """Attach the -od/-pr/--refseq/--debug options shared by every command."""
@@ -82,10 +93,21 @@ def _common_download_options(func):
         default=True,
     )(func)
     func = click.option(
+        "-md",
+        "--mode",
+        help="Search the database will be used with, whose index is built "
+        "beside the FASTA so 'screening' does not build it: 'blastx' "
+        "(makeblastdb) or a DIAMOND sensitivity (diamond makedb). "
+        "default = blastx",
+        default="blastx",
+        type=click.Choice(SEARCH_MODES),
+    )(func)
+    func = click.option(
         "-p",
         "--threads",
-        help="Threads for cd-hit when collapsing duplicate proteins. The "
-        "download itself is network-bound and is unaffected. default = 1",
+        help="Threads for cd-hit when collapsing duplicate proteins and for "
+        "diamond makedb. The download itself is network-bound and is "
+        "unaffected. default = 1",
         type=int,
         default=1,
     )(func)
@@ -138,6 +160,7 @@ def _run_get_databases(
     split_level=NO_SPLIT,
     include_unranked=False,
     threads=1,
+    mode="blastx",
 ):
     """Check for the datasets binary and run :class:`GetDatabases`."""
     if debug:
@@ -150,7 +173,7 @@ def _run_get_databases(
         f"attempts={attempts} stall_timeout={stall_timeout} "
         f"keep_download={keep_download} released_before={released_before!r} "
         f"exclude_taxa={exclude_taxa!r} split_level={split_level!r} "
-        f"threads={threads}"
+        f"threads={threads} mode={mode!r}"
     )
     if shutil.which(DATASETS_BINARY) is None:
         click.secho(
@@ -164,6 +187,15 @@ def _run_get_databases(
         click.secho(
             f"'{CDHIT_BINARY}' was not found on PATH. Install it (conda package "
             "'cd-hit', pinned in env.yml) or pass --no-cluster.",
+            err=True,
+            fg="red",
+        )
+        sys.exit(1)
+    index_binary = INDEX_BINARIES.get(mode, "diamond")
+    if shutil.which(index_binary) is None:
+        click.secho(
+            f"'{index_binary}' was not found on PATH; it builds the {mode} index "
+            "of the database. Install it (env.yml) or pick another --mode.",
             err=True,
             fg="red",
         )
@@ -186,6 +218,7 @@ def _run_get_databases(
             split_level=split_level,
             include_unranked=include_unranked,
             threads=threads,
+            index_mode=mode,
         )
     except Exception as err:
         click.secho(f"Failed to download databases: {err}", err=True, fg="red")
@@ -250,6 +283,7 @@ def get_databases_virus(
     outdir,
     prefix,
     threads,
+    mode,
     cluster,
     refseq,
     attempts,
@@ -269,6 +303,7 @@ def get_databases_virus(
         outdir=outdir,
         prefix=prefix,
         threads=threads,
+        mode=mode,
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=standardize_proteins,
@@ -332,6 +367,7 @@ def get_databases_bacteria(
     outdir,
     prefix,
     threads,
+    mode,
     cluster,
     refseq,
     attempts,
@@ -351,6 +387,7 @@ def get_databases_bacteria(
         outdir=outdir,
         prefix=prefix,
         threads=threads,
+        mode=mode,
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=standardize_proteins,
@@ -386,6 +423,7 @@ def get_databases_host(
     outdir,
     prefix,
     threads,
+    mode,
     cluster,
     refseq,
     attempts,
@@ -404,6 +442,7 @@ def get_databases_host(
         outdir=outdir,
         prefix=prefix,
         threads=threads,
+        mode=mode,
         refseq=refseq,
         exclude_uninformative=exclude_uninformative,
         standardize_proteins=False,

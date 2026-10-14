@@ -228,3 +228,22 @@ class TestBrokenArchives:
 
         _download(tmp_path, str(script), stall_timeout=30, attempts=1)
         assert (outdir / "chuvi.fa").is_file()
+
+
+@pytest.mark.skipif(
+    not binaries_available("makeblastdb", "diamond"),
+    reason="needs makeblastdb and diamond",
+)
+@pytest.mark.parametrize("mode, index", [("blastx", ".pin"), ("fast", ".dmnd")])
+def test_the_index_is_built_beside_the_database(
+    tmp_path, exiting_datasets, mode, index
+):
+    _download(tmp_path, exiting_datasets, stall_timeout=60, index_mode=mode)
+    assert (tmp_path / "db" / f"chuvi.fa{index}").is_file()
+    log = json.loads((tmp_path / "db" / "chuvi.log").read_text())
+    assert log["arguments"]["index_mode"] == mode
+
+
+def test_no_index_mode_builds_no_index(tmp_path, exiting_datasets):
+    _download(tmp_path, exiting_datasets, stall_timeout=60)
+    assert sorted(p.name for p in (tmp_path / "db").glob("chuvi.fa.*")) == []

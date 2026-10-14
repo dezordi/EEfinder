@@ -8,6 +8,7 @@ pyrodigal-gv/pyrodigal-rv and the cd-hit/makeblastdb/blastp binaries are present
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 
 import pandas as pd
@@ -93,6 +94,25 @@ def test_traceback_rewrites_query_coordinates(tmp_path):
     p2 = result.iloc[1]
     assert (int(p2.qstart), int(p2.qend)) == (800, 771)
     assert float(p1.pident) == 95.0 and float(p2.bitscore) == 70.0
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        lambda: similarity_analysis.rundiamond("q.fa", "db.fa", 1, "fast"),
+        lambda: similarity_analysis.rundiamond_blastp("q.fa", "db.fa", 1, "fast", "o"),
+    ],
+    ids=["blastx", "blastp"],
+)
+def test_diamond_failure_raises(tmp_path, monkeypatch, run):
+    # a killed DIAMOND (exit 137, out of memory) must not pass for a search
+    # without hits
+    fake = tmp_path / "diamond"
+    fake.write_text("#!/bin/sh\nexit 137\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    with pytest.raises(subprocess.CalledProcessError):
+        run()
 
 
 def test_similarity_search_default_uses_blastx(monkeypatch):

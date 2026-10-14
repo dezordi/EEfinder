@@ -138,6 +138,11 @@ class ScreeningPaths:
         return self._p("elements.gff3")
 
     @property
+    def ee_elements_faa(self) -> str:
+        """Return the proteins of the merged elements' CDSs."""
+        return self._p("elements.faa")
+
+    @property
     def ee_elements_cleaned_gff3(self) -> str:
         """Return the GFF3 annotation of the mask-cleaned elements."""
         return self._p("elements.cleaned.gff3")
@@ -168,6 +173,10 @@ class ScreeningPaths:
     @property
     def final_gff3(self) -> str:
         return self._p("EEs.gff3")
+
+    @property
+    def final_faa(self) -> str:
+        return self._p("EEs.faa")
 
     @property
     def final_flanks(self) -> str:
@@ -204,6 +213,7 @@ class ScreeningPaths:
             self.final_fasta,
             self.final_tax,
             self.final_gff3,
+            self.final_faa,
             self.final_flanks,
             self.final_cleaned_fasta,
             self.final_cleaned_tax,

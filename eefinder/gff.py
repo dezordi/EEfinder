@@ -6,7 +6,6 @@ https://github.com/the-sequence-ontology/specifications/blob/master/gff3.md
 
 from __future__ import annotations
 import pandas as pd
-from eefinder.get_taxonomy import PROTEIN_ID_SEPARATOR
 from eefinder.lineage import RANKS, rank_name
 
 GFF3_VERSION = "##gff-version 3"
@@ -31,17 +30,10 @@ _ATTRIBUTE_ESCAPES = {
     "\r": "%0D",
 }
 
-GFF3_LIST_SEPARATOR = ","
-
-_LIST_ATTRIBUTES = {"protein_ids"}
-
 _ATTRIBUTE_COLUMNS = [
     ("Name", "_species"),
     *((rank, f"_{rank}") for rank, _ in RANKS),
     ("molecule_type", "molecule_type"),
-    ("product", "protein_products"),
-    ("protein_ids", "protein_ids"),
-    ("host", "host"),
     ("overlap_status", "tag"),
 ]
 
@@ -52,14 +44,6 @@ def _escape(value: object) -> str:
     for char, code in _ATTRIBUTE_ESCAPES.items():
         text = text.replace(char, code)
     return text
-
-
-def _format(tag: str, value: object) -> str:
-    """Escape an attribute value, writing a list attribute as a GFF3 list."""
-    if tag in _LIST_ATTRIBUTES:
-        entries = str(value).split(PROTEIN_ID_SEPARATOR)
-        return GFF3_LIST_SEPARATOR.join(_escape(entry) for entry in entries)
-    return _escape(value)
 
 
 class WriteGFF3:
@@ -95,6 +79,9 @@ class WriteGFF3:
     feature_type : str, optional
         Explicit override for the GFF3 column-3 term. When ``None`` (the
         default) the term is derived from ``analysis``.
+    cds : dict, optional
+        The elements' coding regions (:func:`eefinder.cds.element_cds`), keyed
+        by element ``ID``; each is written as a ``CDS`` child after its element.
     """
 
     def __init__(
@@ -105,6 +92,7 @@ class WriteGFF3:
         source: str = "EEfinder",
         analysis: str = DEFAULT_ANALYSIS,
         feature_type: "str | None" = None,
+        cds: "dict | None" = None,
     ) -> None:
         if feature_type is None:
             if analysis not in FEATURE_TYPES:
@@ -116,6 +104,7 @@ class WriteGFF3:
         self.prefix = prefix
         self.source = source
         self.feature_type = feature_type
+        self.cds = cds or {}
 
         self.write_gff3()
 
@@ -143,7 +132,7 @@ class WriteGFF3:
             if pd.isna(value) or str(value) == "":
                 continue
             pairs.append((tag, value))
-        return ";".join(f"{tag}={_format(tag, value)}" for tag, value in pairs)
+        return ";".join(f"{tag}={_escape(value)}" for tag, value in pairs)
 
     def write_gff3(self) -> None:
         """Read the taxonomy table and write features sorted by seqid/start."""
@@ -179,3 +168,38 @@ class WriteGFF3:
                     self._attributes(row),
                 ]
                 gff_out.write("\t".join(columns) + "\n")
+                element_id = self._qualified_id(row["element_id"])
+                for region in self.cds.get(element_id, []):
+                    gff_out.write(self._cds_line(contig, element_id, region))
+
+    def _cds_line(self, contig: str, parent: str, region) -> str:
+        """Format one CDS child of an element."""
+        pairs = [
+            ("ID", region.id),
+            ("Parent", parent),
+            ("Name", region.name),
+            ("hit", region.protein),
+            ("ref_range", f"{region.ref_start}-{region.ref_end}"),
+            ("aligned_range", f"{region.aligned_start}-{region.aligned_end}"),
+            ("evalue", f"{region.evalue:g}"),
+            ("bitscore", region.bitscore),
+        ]
+        if region.stop_codons:
+            pairs += [("pseudo", "true"), ("stop_codons", region.stop_codons)]
+        if region.partial:
+            pairs.append(("partial", "true"))
+        attributes = ";".join(
+            f"{tag}={_escape(value)}" for tag, value in pairs if value != ""
+        )
+        columns = [
+            contig,
+            self.source,
+            "CDS",
+            str(region.start),
+            str(region.end),
+            str(region.pident),
+            region.strand,
+            "0",
+            attributes,
+        ]
+        return "\t".join(columns) + "\n"

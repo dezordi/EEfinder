@@ -17,6 +17,27 @@ Each feature is documented in full on
 what changed, not how each option works.
 
 ### Added
+- **CDS and proteins of each element.** Each validated hit gives a `CDS` child
+  of its element in `PREFIX.EEs.gff3`: the ORF (ATG to stop codon, standard
+  code) of the hit's reading frame that overlaps the hit most, using the longest
+  hit where hits overlap. `Name` is the reference protein's name (numbered
+  `fragment 1, 2...` along the protein when several CDSs of an element share it), `hit` the
+  reference protein, with `ref_range`, `aligned_range`, `evalue`, `bitscore`,
+  score = identity; `pseudo=true;stop_codons=N` when the hit's aligned region
+  has stop codons, `partial=true` when the ORF reaches the element's edge. The
+  proteins are published as `PREFIX.EEs.faa`. `screening postprocess` takes the
+  taxonomy stage's hit table (`--taxonomy-signature`). The element lines no
+  longer carry `product`, `protein_ids` and `host`, which stay in the TSV.
+- **`get-databases` indexes what it downloads.** `-md`/`--mode` (`blastx` by
+  default, or a DIAMOND sensitivity) builds the `makeblastdb` or
+  `diamond makedb` index beside `{prefix}.fa`, the one `screening prepare` would
+  otherwise build on its first run; the mode is recorded in `{prefix}.log`
+  (`index_mode`) and a missing index binary is an error at start-up.
+- **`Dockerfile`** (+ allow-list `.dockerignore`) building EEfinder from the
+  local checkout on `mambaorg/micromamba` with the `env.yml` dependencies
+  (the `defaults` channel is dropped in the image). Build with
+  `docker build --platform linux/amd64 -t dezordi/eefinder:2.0.0 .`; the containerised
+  run reproduces the golden outputs byte-for-byte.
 - **`screening` is a command group of nine subcommands**, one per pipeline
   stage plus `all`: `prepare`, `clean`, `align`, `filter`, `taxonomy`, `merge`,
   `postprocess`, `flanks`. A stage takes explicit inputs and defaults them to
@@ -58,8 +79,8 @@ what changed, not how each option works.
   keep-list or drop-list of families. Filtered-out elements are preserved under
   `tmp_outputs/` rather than discarded. See
   [Overlap resolution](docs/overlap.md).
-- **GFF3 annotation output** — `PREFIX.EEs.gff3`, the taxonomy table as a
-  genome-browser-loadable annotation, with `-an/--analysis` selecting the feature
+- **GFF3 annotation output** — `PREFIX.EEs.gff3`, the elements and their
+  taxonomy as a genome-browser-loadable annotation, with `-an/--analysis` selecting the feature
   type (`endogenous_viral_element` / `endogenous_bacterial_element`).
 - **An auditable run log.** `eefinder.log` records the resolved arguments, the
   parameters used at each step, per-step timing, and the detected versions of
@@ -81,6 +102,26 @@ what changed, not how each option works.
   file). The Read-the-Docs site itself arrived in 1.1.2.
 
 ### Changed
+- **black is pinned to 25.11.0** (the last release that runs on Python 3.9) in the
+  `dev` extra and `requirements-dev.txt`, which used to pin 26.5.1 or 25.11.0
+  depending on the Python version, so the two formatted differently; CI now runs
+  `black --check eefinder tests`.
+- **The manual database-building appendix was removed from the docs.** It
+  described the old seven-column `-mt` table, which no longer validates;
+  `docs/get-databases.md` now has a short note on the CSV a hand-built database
+  needs instead. Its NCBI Virus screenshots went with it.
+- **`postprocess` no longer rewrites its inputs.** Overlap resolution used to
+  filter `PREFIX.elements.fa`/`.elements.tax.tsv` in place, which broke
+  workflow managers that stage inputs as symlinks (Nextflow, Snakemake): the
+  upstream `merge` outputs were mutated and the filtered set was never a
+  declared output. `postprocess` now writes `PREFIX.elements.resolved.fa` and
+  `PREFIX.elements.resolved.tax.tsv` (a copy under `--overlap keep`), and
+  `flanks` defaults `--ee-elements` to that file. Published `PREFIX.EEs.*`
+  outputs are unchanged.
+- **A missing BLAST/DIAMOND index is built automatically.** `screening`
+  (`prepare`/`all`) checks for `{db}.pin`/`.pal` (BLAST) or `{db}.dmnd`
+  (DIAMOND) beside `-db` and `-bt` and indexes whichever lacks one, instead of
+  warning and failing later in the search. `-id` now forces a rebuild.
 - **The CLI is a command group and the pipeline moved under `screening`.** It is
   invoked as **`eefinder screening <options>`** instead of `eefinder <options>`;
   the options themselves are unchanged. **(Breaking.)**
@@ -112,6 +153,34 @@ what changed, not how each option works.
   `screening` subcommand of the group. **(Breaking.)**
 
 ### Fixed
+- **Elements were missing the first base of their first hit.** A hit's start is
+  1-based (BLAST/DIAMOND), but the candidate BED (`FilterTable`) and the merge
+  BED (`GetAnnotBed`) used it as a 0-based BED start, so every candidate and
+  element was cut one base short at its start (its GFF3 start one base late),
+  and a hit starting at the element's start could not be translated in frame.
+  Both now write `qstart - 1`. Every element ID and coordinate moves one base
+  to the left and its sequence gains that base; on the golden run one weak viral
+  hit (bitscore 30.6) is now outscored by a host bait that aligns from the
+  restored base (32.0), so its element ends at the next hit. The golden outputs
+  were regenerated.
+- **A failed `diamond makedb` left no index without an error.** It ran without
+  an exit-status check; it now raises, like the searches.
+- **A hit table with no negative-sense hit got float coordinates.** The strand
+  swap in `FilterTable` assigned an empty selection, which pandas returns as
+  float64, so `qstart`/`qend` became `6.0`/`278.0`; the EE table inherited them
+  when concatenated with the host hits in `filter`, and bedtools rejected the
+  BED in `merge` (`No columns to parse from file`). The swap now runs only when
+  there is a negative-sense hit. The test fixture always had one, so the suite
+  never hit it; small inputs (a few hits per table) do.
+- **A failed DIAMOND search passed for a search without hits.** `diamond
+  blastx`/`blastp` ran without an exit-status check (and with stderr discarded),
+  so a run killed for lack of memory left an empty hit table and `align` failed
+  later with `Columns must be same length as key`, the same error as a genome
+  with no hits. A non-zero exit status now raises, naming the DIAMOND command.
+- **`tracking.tsv` left `Organism_release_date` empty for duplicates.** The
+  date was written when the packages were merged, after `cd-hit` had already
+  dropped the `identical_duplicate` rows, so they never received it. It is now
+  recorded when every downloaded accession is first seen.
 - **A protein with no metadata row reached the output with empty taxonomy.**
   The join is a left join, so `-db` entries absent from `-mt` were not an error
   -- they produced rows with blank `Family`/`Genus`/`Species`. `prepare` now
@@ -191,6 +260,11 @@ No change to the pipeline or its results.
 Small fix release ([PR #39](https://github.com/WallauBioinfo/EEfinder/pull/39)).
 
 ### Fixed
+- **A failed DIAMOND search passed for a search without hits.** `diamond
+  blastx`/`blastp` ran without an exit-status check (and with stderr discarded),
+  so a run killed for lack of memory left an empty hit table and `align` failed
+  later with `Columns must be same length as key`, the same error as a genome
+  with no hits. A non-zero exit status now raises, naming the DIAMOND command.
 - **EEfinder logged on the root logger.** `logging.getLogger("")` returns the
   root logger, so the messages carried no identifiable name and could not be
   configured or silenced independently of everything else in the process. The
@@ -218,6 +292,11 @@ Output and naming release ([PR #38](https://github.com/WallauBioinfo/EEfinder/pu
   frozen dependency table (every transitive conda package) was dropped.
 
 ### Fixed
+- **A failed DIAMOND search passed for a search without hits.** `diamond
+  blastx`/`blastp` ran without an exit-status check (and with stderr discarded),
+  so a run killed for lack of memory left an empty hit table and `align` failed
+  later with `Columns must be same length as key`, the same error as a genome
+  with no hits. A non-zero exit status now raises, naming the DIAMOND command.
 - **pandas `FutureWarning`s** from chained-assignment `fillna(..., inplace=True)`
   and from assigning a string into an inferred-dtype column (`sense`), which
   would have become errors in pandas 3.
@@ -243,6 +322,11 @@ to "Beta dev version"; the pipeline and its outputs are those of 0.3.1.
 - The codebase was formatted with black.
 
 ### Fixed
+- **A failed DIAMOND search passed for a search without hits.** `diamond
+  blastx`/`blastp` ran without an exit-status check (and with stderr discarded),
+  so a run killed for lack of memory left an empty hit table and `align` failed
+  later with `Columns must be same length as key`, the same error as a genome
+  with no hits. A non-zero exit status now raises, naming the DIAMOND command.
 - **Three numeric arguments were interpolated into shell commands unvalidated.**
   `bedtools merge -d` (`--limit`), `diamond makedb --threads` and
   `diamond blastx -p` (`--threads`) are now cast with `int()` before being

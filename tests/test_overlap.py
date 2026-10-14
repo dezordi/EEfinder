@@ -270,11 +270,17 @@ def test_postprocess_resolves_overlaps_without_touching_its_inputs(tmp_path):
         ],
     )
     _write_fasta(fasta, ["ctg1:100-200", "ctg1:150-400"])
+    signature = tmp_path / "taxonomy_signature.csv"
+    signature.write_text(
+        "qseqid,sseqid,pident,length,mismatch,gapopen,qstart,qend,sstart,send,"
+        "evalue,bitscore,sense,bed_name,tag,Taxonomy,Molecule_type,Protein,Host\n"
+    )
     before = (tax.read_text(), fasta.read_text())
 
     result = PostProcessing(
         ee_elements=str(fasta),
         ee_elements_tax=str(tax),
+        taxonomy_signature=str(signature),
         outdir=str(tmp_path / "out"),
         prefix="PFX",
         overlap="targets",

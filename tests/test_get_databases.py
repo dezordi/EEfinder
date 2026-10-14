@@ -748,6 +748,38 @@ def test_cli_virus_defaults_taxon_to_viruses_root(monkeypatch, tmp_path):
     assert captured["standardize_proteins"] is True
 
 
+@pytest.mark.parametrize(
+    "extra, mode", [([], "blastx"), (["-md", "fast"], "fast")], ids=["default", "fast"]
+)
+def test_cli_passes_the_index_mode(monkeypatch, tmp_path, extra, mode):
+    captured = {}
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.shutil.which", lambda name: f"/usr/bin/{name}"
+    )
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.GetDatabases",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    result = CliRunner().invoke(
+        cli, ["get-databases", "host", "-tx", "7159", "-od", str(tmp_path), *extra]
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["index_mode"] == mode
+
+
+def test_cli_fails_without_the_index_binary(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "eefinder.scripts.get_databases.shutil.which",
+        lambda name: None if name == "diamond" else f"/usr/bin/{name}",
+    )
+    result = CliRunner().invoke(
+        cli,
+        ["get-databases", "host", "-tx", "7159", "-od", str(tmp_path), "-md", "fast"],
+    )
+    assert result.exit_code == 1
+    assert "'diamond' was not found" in result.output
+
+
 def test_cli_bacteria_defaults_taxon_to_bacteria_root(monkeypatch, tmp_path):
     captured = {}
 

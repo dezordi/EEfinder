@@ -570,12 +570,19 @@ def merge_cmd(
     "default = <outdir>/<prefix>.elements.tax.tsv",
     default=None,
 )
+@click.option(
+    "--taxonomy-signature",
+    help="Per-hit taxonomy table from the 'taxonomy' stage, whose hits become the "
+    "elements' CDSs. default = <outdir>/<prefix>.taxonomy_signature.csv",
+    default=None,
+)
 @_outdir_options
 @_postprocess_options
 @_common_options
 def postprocess_cmd(
     ee_elements,
     ee_elements_tax,
+    taxonomy_signature,
     outdir,
     prefix,
     mask_per,
@@ -588,7 +595,7 @@ def postprocess_cmd(
     versions_key,
     debug,
 ):
-    """Apply the repeat filter, resolve overlaps and write the GFF3."""
+    """Apply the repeat filter, resolve overlaps and write the GFF3 and proteins."""
     if debug:
         enable_debug()
     _check_overlap_options(overlap, target_families, non_target_families)
@@ -599,6 +606,7 @@ def postprocess_cmd(
         PostProcessing(
             ee_elements=ee_elements or paths.ee_elements,
             ee_elements_tax=ee_elements_tax or paths.ee_elements_tax,
+            taxonomy_signature=taxonomy_signature or paths.taxonomy_signature,
             outdir=outdir,
             prefix=prefix,
             clean_masked=clean_masked,

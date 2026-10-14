@@ -52,4 +52,5 @@ def test_get_annot_bed_genus_level_naming(tmp_path):
 
     bed = pd.read_csv(f"{tax}.bed", sep="\t", header=None)
     assert bed.iloc[0, 0] == "ctg1|GenA|pos"
+    assert bed.iloc[0, 1:3].tolist() == [9, 310]  # BED start: qstart - 1
     assert bed.iloc[0, 3] == "PROT_A|pos|80.0"

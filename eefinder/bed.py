@@ -91,6 +91,7 @@ class GetAnnotBed:
             df["formated_name"] = df["qseqid"] + "|" + keys + "|" + df["sense"]
 
         bed = df[["formated_name", "qstart", "qend", "sseqid"]].copy()
+        bed["qstart"] -= 1  # 1-based hit start -> BED start
         bed = bed.sort_values(["formated_name", "qstart"], ascending=(True, True))
         bed.to_csv(f"{self.blast_tax_info}.bed", index=False, header=False, sep="\t")
 

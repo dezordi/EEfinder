@@ -181,6 +181,8 @@ CANDIDATE_FASTA = FastaModel(name="candidate sequences")
 
 ELEMENT_FASTA = FastaModel(name="element sequences")
 
+ELEMENT_PROTEINS = FastaModel(name="element proteins")
+
 GENOME_FASTA = FastaModel(name="cleaned genome", allow_empty=False)
 
 

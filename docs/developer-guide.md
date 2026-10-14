@@ -29,6 +29,7 @@ communicate through files on disk whose names accrete suffixes (`.rn.fmt`,
 | `tag_elements.py` | `TagElements` — overlap flags + `average_pident`. |
 | `overlap.py` | `FilterOverlap` — overlap resolution strategies. |
 | `gff.py` | `WriteGFF3`. |
+| `cds.py` | `element_cds` / `write_faa` — the elements' CDSs and proteins. |
 | `get_databases.py` | `GetDatabases` — the `get-databases` implementation. |
 | `taxon_exclusion.py` | Taxonomy expansion so `--exclude-taxon` can drop a branch before it is downloaded. |
 | `lineage.py` | The `Taxonomy` column: format, parse, and the family/genus fallback to the whole lineage. |
@@ -65,17 +66,18 @@ communicate through files on disk whose names accrete suffixes (`.rn.fmt`,
   offsets expect. `check_metadata_file` runs the same check on the header alone,
   from `main.py`, so a bad `-mt` fails before the similarity search. Changing the
   expected columns means changing that list *and* the offsets together.
-- **The default `blastx` mode is the reliable path.** The DIAMOND modes can fail
-  silently because the subprocess stderr is routed to `DEVNULL`; verify the
-  `diamond` build (env pins `diamond=2.0.15`) if a DIAMOND run produces no hits.
+- **The default `blastx` mode is the reliable path.** DIAMOND's stderr is routed
+  to `DEVNULL`, so a failure (exit status checked, it raises) names only the
+  command and its status; rerun it by hand to see why. Verify the `diamond` build
+  (env pins `diamond=2.0.15`) if a DIAMOND run produces no hits.
 - **Debug logging:** `--debug` (on both commands) lowers the `eefinder` logger to
   DEBUG via `log.enable_debug()`; the `logger.debug(...)` calls throughout are
   silent otherwise.
 
 ## Style
 
-- Format with **black** (line length 88): `black eefinder tests`. The package and
-  tests are black-clean; keep them that way.
+- Format with **black** (line length 88, pinned to 25.11.0): `black eefinder
+  tests`. The package and tests are black-clean; keep them that way.
 - Target Python is pinned to **3.9** (`env.yml`). Avoid syntax that only parses
   on 3.10+ (e.g. parenthesised multi-item `with` statements); use
   `from __future__ import annotations` for newer typing syntax.

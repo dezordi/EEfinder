@@ -42,6 +42,7 @@ MAIN_OUTPUTS = (
     f"{PREFIX}.EEs.tax.tsv",
     f"{PREFIX}.EEs.flanks.fa",
     f"{PREFIX}.EEs.gff3",
+    f"{PREFIX}.EEs.faa",
 )
 
 pytestmark = [
@@ -270,7 +271,7 @@ def test_merge_limit_controls_merging(
     ids_loose = _element_ids(loose)
 
     assert len(ids_loose) < len(ids_strict)
-    merged = "ctg_1913:102863-104096"
+    merged = "ctg_1913:102862-104096"
     assert merged in ids_loose
     assert merged not in ids_strict
 

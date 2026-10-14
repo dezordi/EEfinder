@@ -17,7 +17,8 @@ from eefinder.versions import (
     parse_env_versions,
 )
 
-ENV_YML = textwrap.dedent("""\
+ENV_YML = textwrap.dedent(
+    """\
     name: EEfinder
     dependencies:
       - bedtools=2.27.1
@@ -27,7 +28,8 @@ ENV_YML = textwrap.dedent("""\
       - pip:
         - numpy==1.23.1
         - pandas==1.4.2
-    """)
+    """
+)
 
 
 def test_parse_env_versions_handles_conda_and_pip_pins(tmp_path):
@@ -46,13 +48,17 @@ def test_parse_env_versions_handles_conda_and_pip_pins(tmp_path):
 
 def test_collect_flags_matches_and_mismatches(tmp_path):
     env = tmp_path / "env.yml"
-    env.write_text(textwrap.dedent(f"""\
+    env.write_text(
+        textwrap.dedent(
+            f"""\
             dependencies:
               - python={platform.python_version()}
               - pip:
                 - numpy=={numpy.__version__}
                 - pandas==0.0.0
-            """))
+            """
+        )
+    )
 
     deps = {dep.name: dep for dep in collect_dependency_versions(env)}
     assert deps["python"].status == "ok"

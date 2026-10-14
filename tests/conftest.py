@@ -174,11 +174,13 @@ def blast_outfmt6(tmp_path) -> Path:
 @pytest.fixture
 def taxonomy_csv(tmp_path) -> Path:
     """Metadata CSV mirroring the schema of ``test_files/virus_subset.csv``."""
-    content = textwrap.dedent("""\
+    content = textwrap.dedent(
+        """\
         Accession,Taxonomy,Molecule_type,Protein,Host
         PROT_A,r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__Familyalpha;g__Genusalpha;s__Species alpha,ssRNA(+),polyprotein,Aedes
         PROT_C,r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__Familygamma;g__Genusgamma;s__Species gamma,ssRNA(-),glycoprotein,Culex
-        """)
+        """
+    )
     path = tmp_path / "metadata.csv"
     path.write_text(content)
     return path

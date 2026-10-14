@@ -226,6 +226,7 @@ class DownloadArguments:
     split_level: str = ""
     include_unranked: bool = False
     threads: int = 1
+    index_mode: str = ""
 
 
 @dataclass

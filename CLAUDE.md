@@ -67,7 +67,8 @@ own module under `eefinder/scripts/`:
   `--exclude-uninformative`, `--standardize-proteins` = generic cleaning only,
   no name map) produce a protein FASTA + metadata CSV (the
   `-db`/`-mt` inputs); `host` (taxon **required**) produces the `-bt` baits
-  FASTA. The shared `-od`/`-pr`/`--refseq` options come from the
+  FASTA. Every subcommand also builds the search index of its FASTA
+  (`-md`/`--mode`, default `blastx`, via `make_database.MakeDB`). The shared `-od`/`-pr`/`--refseq` options come from the
   `_common_download_options` decorator in `scripts/get_databases.py`;
   `_run_get_databases` does
   the `datasets`-binary check and calls `GetDatabases`. The metadata CSV is
@@ -132,8 +133,8 @@ representatives.
 - **Inputs:** genome FASTA (`-in`), protein DB FASTA (`-db`) + metadata CSV
   (`-mt`, columns `Accession,Species,Genus,Family,Molecule_type,Protein,Host`),
   host-gene baits FASTA (`-bt`).
-- **Outputs:** `PREFIX.EEs.fa`, `PREFIX.EEs.tax.tsv`, `PREFIX.EEs.gff3`,
-  `PREFIX.EEs.flanks.fa` (+ `.cleaned.*` when `--clean_masked`), plus
+- **Outputs:** `PREFIX.EEs.fa`, `PREFIX.EEs.tax.tsv`, `PREFIX.EEs.gff3` (with
+  each element's CDSs, `cds.py`), `PREFIX.EEs.faa`, `PREFIX.EEs.flanks.fa` (+ `.cleaned.*` when `--clean_masked`), plus
   `eefinder.log` and, unless `--removetmp`, a `tmp_files/` archive of
   intermediates. With `--overlap longest|targets`, a `tmp_outputs/` directory
   holds the `PREFIX.EEs.removed.*` elements filtered out of the final results.
@@ -184,7 +185,8 @@ pytest -m integration       # end-to-end CLI runs against test_files/
 ## Style
 
 - Format with **black** (line length 88): `black eefinder tests`. The package
-  and tests are black-clean; keep them that way.
+  and tests are black-clean; keep them that way. black is pinned to 25.11.0
+  (the last release that runs on Python 3.9); CI runs `black --check`.
 - Target Python is pinned to **3.9** (`env.yml`). Avoid syntax that only parses
   on 3.10+ (e.g. parenthesised multi-item `with` statements); `py_compile` under
   3.9 should stay green.
@@ -197,11 +199,12 @@ pytest -m integration       # end-to-end CLI runs against test_files/
   outputs to `ScreeningPaths` names, so a new file name is one edit in
   `stages/paths.py`. Never hard-code an intermediate name elsewhere.
 - **The `PREFIX.EEs.*` names are published** and must not be renamed.
-- **The default `blastx` mode is the reliable path.** The DIAMOND modes can
-  fail silently because the subprocess stderr is routed to `DEVNULL`; verify the
-  `diamond` build (env pins `diamond=2.0.15`) if a DIAMOND run produces no hits.
+- **The default `blastx` mode is the reliable path.** DIAMOND's stderr is routed
+  to `DEVNULL`, so a failure (exit status checked, it raises) names only the
+  command and its status; rerun it by hand to see why. Verify the `diamond` build
+  (env pins `diamond=2.0.15`) if a DIAMOND run produces no hits.
 - **The integration golden files are the safety net.** Any refactor of the
-  pipeline must leave `PREFIX.EEs.{fa,tax.tsv,gff3,flanks.fa}` byte-identical;
+  pipeline must leave `PREFIX.EEs.{fa,tax.tsv,gff3,faa,flanks.fa}` byte-identical;
   `pytest -m integration` asserts it. Running `all` and running the eight
   stages in sequence must agree.
 - Keep changes minimal and focused; update `CHANGELOG.md` each session.

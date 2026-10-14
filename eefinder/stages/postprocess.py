@@ -1,7 +1,7 @@
-"""Post-processing: repeat filtering, overlap resolution and GFF3 output.
+"""Post-processing: repeat filtering, overlap resolution and GFF3/protein output.
 
-Each of the three narrows or re-renders the merged elements and their taxonomy
-table, so they share one stage.
+Each narrows or re-renders the merged elements and their taxonomy table, so
+they share one stage.
 """
 
 from __future__ import annotations
@@ -9,8 +9,9 @@ import os
 import shutil
 from dataclasses import dataclass
 from typing import Optional, Sequence
+from eefinder.cds import element_cds, write_faa
 from eefinder.clean_data import MaskClean
-from eefinder.models import ELEMENT_FASTA, ELEMENT_TABLE
+from eefinder.models import ELEMENT_FASTA, ELEMENT_PROTEINS, ELEMENT_TABLE
 from eefinder.get_taxonomy import GetCleanedTaxonomy
 from eefinder.gff import WriteGFF3
 from eefinder.log import logger
@@ -31,7 +32,9 @@ class PostProcessingOutputs(StageOutputs):
     ee_elements_resolved_tax : str
         Their taxonomy table -- published as ``PREFIX.EEs.tax.tsv``.
     ee_elements_gff3 : str
-        GFF3 annotation of the resolved elements.
+        GFF3 annotation of the resolved elements, with their CDSs.
+    ee_elements_faa : str
+        The proteins of those CDSs. Published as ``PREFIX.EEs.faa``.
     ee_elements_cleaned : str or None
         Mask-cleaned element sequences, when ``--clean_masked`` was given.
     ee_elements_cleaned_tax : str or None
@@ -45,6 +48,7 @@ class PostProcessingOutputs(StageOutputs):
     ee_elements_resolved: str
     ee_elements_resolved_tax: str
     ee_elements_gff3: str
+    ee_elements_faa: str
     ee_elements_cleaned: Optional[str] = None
     ee_elements_cleaned_tax: Optional[str] = None
     ee_elements_cleaned_gff3: Optional[str] = None
@@ -53,7 +57,7 @@ class PostProcessingOutputs(StageOutputs):
 
 
 class PostProcessing(Stage):
-    """Apply the repeat filter, resolve overlaps and write the GFF3.
+    """Apply the repeat filter, resolve overlaps and write the GFF3 and proteins.
 
     Parameters
     ----------
@@ -62,6 +66,10 @@ class PostProcessing(Stage):
         :class:`~eefinder.stages.merging.MergeFragmentedElements`.
     ee_elements_tax : str
         The matching per-element taxonomy table.
+    taxonomy_signature : str
+        The per-hit table from
+        :class:`~eefinder.stages.taxonomy.TaxonomyAssignment`; its hits become
+        the elements' CDSs (:mod:`eefinder.cds`).
     outdir, prefix : str
         Run output directory and prefix.
     clean_masked : bool
@@ -83,6 +91,7 @@ class PostProcessing(Stage):
     >>> result = PostProcessing(                           # doctest: +SKIP
     ...     ee_elements="out/run.elements.fa",
     ...     ee_elements_tax="out/run.elements.tax.tsv",
+    ...     taxonomy_signature="out/run.taxonomy_signature.csv",
     ...     outdir="out",
     ...     prefix="run",
     ...     overlap="longest",
@@ -98,6 +107,7 @@ class PostProcessing(Stage):
     models = {
         "ee_elements_resolved": ELEMENT_FASTA,
         "ee_elements_resolved_tax": ELEMENT_TABLE,
+        "ee_elements_faa": ELEMENT_PROTEINS,
         "ee_elements_cleaned": ELEMENT_FASTA,
         "ee_elements_cleaned_tax": ELEMENT_TABLE,
     }
@@ -106,6 +116,7 @@ class PostProcessing(Stage):
         self,
         ee_elements: str,
         ee_elements_tax: str,
+        taxonomy_signature: str,
         outdir: str,
         prefix: str,
         clean_masked: bool = False,
@@ -118,6 +129,7 @@ class PostProcessing(Stage):
         super().__init__(outdir, prefix)
         self.ee_elements = ee_elements
         self.ee_elements_tax = ee_elements_tax
+        self.taxonomy_signature = taxonomy_signature
         self.clean_masked = clean_masked
         self.mask_per = mask_per
         self.overlap = overlap
@@ -126,7 +138,7 @@ class PostProcessing(Stage):
         self.analysis = analysis
 
     def _execute(self):
-        self._require(self.ee_elements, self.ee_elements_tax)
+        self._require(self.ee_elements, self.ee_elements_tax, self.taxonomy_signature)
         paths = self.paths
         actions = []
 
@@ -188,14 +200,17 @@ class PostProcessing(Stage):
                 f"saving the filtered-out elements to {paths.removed_dir}"
             )
 
-        logger.info("Generating GFF3 annotation")
+        logger.info("Generating GFF3 annotation and element proteins")
         logger.debug(f"WriteGFF3 (analysis={self.analysis}) for prefix {self.prefix!r}")
+        cds = element_cds(resolved, resolved_tax, self.taxonomy_signature, self.prefix)
         WriteGFF3(
             resolved_tax,
             paths.ee_elements_gff3,
             prefix=self.prefix,
             analysis=self.analysis,
+            cds=cds,
         )
+        write_faa(cds, paths.ee_elements_faa)
         if self.clean_masked:
             cleaned_gff3 = paths.ee_elements_cleaned_gff3
             WriteGFF3(
@@ -203,14 +218,20 @@ class PostProcessing(Stage):
                 cleaned_gff3,
                 prefix=self.prefix,
                 analysis=self.analysis,
+                cds=element_cds(
+                    cleaned, cleaned_tax, self.taxonomy_signature, self.prefix
+                ),
             )
-        actions.append("generated GFF3 annotation of endogenous elements")
+        actions.append(
+            "generated GFF3 annotation of endogenous elements and their CDS proteins"
+        )
 
         outputs = PostProcessingOutputs(
             step_info=None,
             ee_elements_resolved=resolved,
             ee_elements_resolved_tax=resolved_tax,
             ee_elements_gff3=paths.ee_elements_gff3,
+            ee_elements_faa=paths.ee_elements_faa,
             ee_elements_cleaned=cleaned,
             ee_elements_cleaned_tax=cleaned_tax,
             ee_elements_cleaned_gff3=cleaned_gff3,

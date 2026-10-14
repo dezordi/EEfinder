@@ -86,7 +86,8 @@ eefinder get-databases host -tx "Aedes aegypti" -od db/ -pr host
 | `-tx/--taxon` | NCBI taxon name or tax id (e.g. `Flaviviridae`, `10239`). |
 | `-od/--outdir` | Output directory. |
 | `-pr/--prefix` | Output basename (default: the dataset type → `virus.fa` / `virus.csv`). |
-| `-p/--threads` | Threads for the `cd-hit` deduplication (default 1). The download itself is network-bound and unaffected. |
+| `-md/--mode` | Search the database is for: its index is built beside the FASTA — `blastx` (`makeblastdb`, default) or a DIAMOND sensitivity (`diamond makedb`). See [Indexing](#indexing). |
+| `-p/--threads` | Threads for the `cd-hit` deduplication and `diamond makedb` (default 1). The download itself is network-bound and unaffected. |
 | `--refseq/--all-sequences` | Restrict to RefSeq (default) or fetch everything. |
 | `--exclude-taxon` | Leave a branch of the taxonomy out of the download entirely; repeatable. Defaults to SARS-CoV-2 for `virus`. See [Excluding a virus from the download](#excluding-a-virus-from-the-download). |
 | `--include-unranked/--skip-unranked` | Also download the subtrees with no taxon at `--split-level`, instead of only reporting them. Their lineage still distinguishes them. default = skip. Not on `host`. |
@@ -253,6 +254,7 @@ Failed to download databases: datasets download failed after 1 attempt(s)
 db/
 ├── virus.fa              the protein database (screening -db)
 ├── virus.csv             its metadata (screening -mt)
+├── virus.fa.p*           its BLAST index (virus.fa.dmnd with a DIAMOND --mode)
 ├── virus.tracking.tsv    the treatment of every downloaded accession
 ├── virus.clstr           the cd-hit clusters: members and representatives
 └── virus.log             the JSON run summary
@@ -520,7 +522,10 @@ timing, and a **`sequence_counts`** block reporting how many sequences were:
 ## Indexing
 
 The databases must be indexed once for the search engine you intend to use.
-`screening` builds the BLAST (`makeblastdb`) or DIAMOND (`diamond makedb`)
-index of `-db` and `-bt` automatically when it is missing; pass
-`-id`/`--index_databases` to rebuild it (e.g. after replacing a FASTA in
-place).
+`get-databases` builds the index of what it downloads, for the search given by
+`-md`/`--mode` (`blastx` by default; any DIAMOND sensitivity builds the same
+`.dmnd`), so `screening` finds it beside the FASTA and reuses it. `screening`
+builds the BLAST (`makeblastdb`) or DIAMOND (`diamond makedb`) index of `-db`
+and `-bt` when it is missing, e.g. for a database built with another `--mode` or
+by hand; pass `-id`/`--index_databases` to rebuild it (e.g. after replacing a
+FASTA in place).

@@ -70,12 +70,16 @@ class FilterTable:
         df.loc[df["qend"].astype(int) > df["qstart"].astype(int), "sense"] = "pos"
 
         neg = df["sense"] == "neg"
-        df.loc[neg, ["qstart", "qend"]] = df.loc[neg, ["qend", "qstart"]].values
+        # an empty selection comes back as float64 and would upcast the
+        # coordinates, which bedtools then rejects in `merge`
+        if neg.any():
+            df.loc[neg, ["qstart", "qend"]] = df.loc[neg, ["qend", "qstart"]].values
 
         if self.tag == "EE":
             df["tag"] = "EE"
+            # BED-style (0-based start), as the getfasta header of the candidate
             df["bed_name"] = df.apply(
-                lambda x: f"{x['qseqid']}:{x['qstart']}-{x['qend']}", axis=1
+                lambda x: f"{x['qseqid']}:{int(x['qstart']) - 1}-{x['qend']}", axis=1
             )
         else:
             df["tag"] = "HOST"
@@ -120,11 +124,12 @@ class FilterTable:
             columns=FILTERED_COLUMNS,
         )
         if self.tag == "EE":
-            filtered.to_csv(
+            bed = filtered[["qseqid", "qstart", "qend"]].copy()
+            bed["qstart"] -= 1  # 1-based hit start -> BED start
+            bed.to_csv(
                 f"{self.blast_result}.filtred.bed",
                 header=False,
                 sep="\t",
                 index=False,
-                columns=["qseqid", "qstart", "qend"],
             )
         shutil.rmtree(tmp_path, ignore_errors=True)

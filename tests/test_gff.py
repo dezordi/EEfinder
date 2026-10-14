@@ -193,7 +193,8 @@ def test_write_gff3_attributes_and_escaping(tmp_path):
     assert attrs["Name"] == "SpA"
     assert attrs["family"] == "FamA"
     assert attrs["overlap_status"] == "unique"
-    assert attrs["product"] == "polyprotein%2C partial"
+    # the proteins are described by the CDS lines; the rest stays in the TSV
+    assert not {"product", "protein_ids", "host"} & attrs.keys()
 
 
 def test_write_gff3_missing_score_column(tmp_path):
@@ -292,62 +293,3 @@ def test_write_gff3_custom_source_and_type(tmp_path):
     _, features = _read_features(out)
     assert features[0][1] == "MyTool"
     assert features[0][2] == "match"
-
-
-def test_write_gff3_protein_ids_are_a_comma_list(tmp_path):
-    """The ``;`` of the TSV would have to be escaped; GFF3 lists use commas."""
-    tax = tmp_path / "eves.tax"
-    _write_tax(
-        tax,
-        [
-            [
-                "ctg1:0-10",
-                "pos",
-                "P1|90.0;P2|80.0",
-                "prot",
-                "ssRNA",
-                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
-                "Aedes",
-                "",
-                "unique",
-                85.0,
-            ]
-        ],
-    )
-    out = tmp_path / "eves.gff3"
-
-    WriteGFF3(str(tax), str(out))
-
-    _, features = _read_features(out)
-    attrs = dict(pair.split("=", 1) for pair in features[0][8].split(";"))
-    assert attrs["protein_ids"] == "P1|90.0,P2|80.0"
-    assert "%3B" not in features[0][8]
-
-
-def test_write_gff3_escapes_a_comma_inside_a_list_entry(tmp_path):
-    """A literal comma must not be read as a list separator."""
-    tax = tmp_path / "eves.tax"
-    _write_tax(
-        tax,
-        [
-            [
-                "ctg1:0-10",
-                "pos",
-                "P1|90.0;P2, odd|80.0",
-                "prot",
-                "ssRNA",
-                "r__Unk;k__Unk;p__Unk;c__Unk;o__Unk;f__FamA;g__GenA;s__SpA",
-                "Aedes",
-                "",
-                "unique",
-                85.0,
-            ]
-        ],
-    )
-    out = tmp_path / "eves.gff3"
-
-    WriteGFF3(str(tax), str(out))
-
-    _, features = _read_features(out)
-    attrs = dict(pair.split("=", 1) for pair in features[0][8].split(";"))
-    assert attrs["protein_ids"] == "P1|90.0,P2%2C odd|80.0"

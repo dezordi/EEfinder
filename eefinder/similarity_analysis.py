@@ -55,6 +55,7 @@ def rundiamond(query_file: str, database_file: str, threads: int, mode: str) -> 
         shlex.split(clinedmd),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        check=True,
     )
 
 
@@ -94,6 +95,7 @@ def rundiamond_blastp(
         shlex.split(command),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        check=True,
     )
 
 

@@ -29,8 +29,8 @@ class ScreeningPipelineOutputs(StageOutputs):
 
     Attributes
     ----------
-    final_fasta, final_tax, final_gff3, final_flanks : str
-        The four main outputs.
+    final_fasta, final_tax, final_gff3, final_faa, final_flanks : str
+        The main outputs.
     final_cleaned_fasta, final_cleaned_tax, final_cleaned_gff3 : str or None
         Their ``--clean_masked`` counterparts.
     step_infos : list of StepInfo
@@ -40,6 +40,7 @@ class ScreeningPipelineOutputs(StageOutputs):
     final_fasta: str
     final_tax: str
     final_gff3: str
+    final_faa: str
     final_flanks: str
     final_cleaned_fasta: Optional[str] = None
     final_cleaned_tax: Optional[str] = None
@@ -221,6 +222,7 @@ class ScreeningPipeline(Stage):
             PostProcessing(
                 ee_elements=merged.ee_elements,
                 ee_elements_tax=merged.ee_elements_tax,
+                taxonomy_signature=assigned.taxonomy_signature,
                 outdir=self.outdir,
                 prefix=self.prefix,
                 clean_masked=self.clean_masked,
@@ -252,6 +254,7 @@ class ScreeningPipeline(Stage):
             final_fasta=paths.final_fasta,
             final_tax=paths.final_tax,
             final_gff3=paths.final_gff3,
+            final_faa=paths.final_faa,
             final_flanks=paths.final_flanks,
             final_cleaned_fasta=(
                 paths.final_cleaned_fasta if self.clean_masked else None
@@ -271,6 +274,7 @@ class ScreeningPipeline(Stage):
             (processed.ee_elements_resolved, paths.final_fasta),
             (processed.ee_elements_resolved_tax, paths.final_tax),
             (processed.ee_elements_gff3, paths.final_gff3),
+            (processed.ee_elements_faa, paths.final_faa),
             (flanked.flanks, paths.final_flanks),
         ]
         if self.clean_masked:
